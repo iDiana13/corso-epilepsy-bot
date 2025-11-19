@@ -1,107 +1,206 @@
-# bot.py
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.context import FSMContext
-import asyncio
+# EpiBot_fixed.py
+# Требует: pip install aiogram==2.25.1
+# Исправления:
+# - токен только через переменную окружения EPIBOT_TOKEN
+# - защита от дублей инстансов через lockfile
+# - ограничение отправки меню (cooldown)
+# - игнорирование не приватных чатов
+# - подробное логирование
+# - safe_send_language вместо прямой отправки клавиатуры
 
-# ---------- Настройки ----------
 import os
-API_TOKEN = os.getenv("API_TOKEN")
-AVATAR_LOCAL_PATH = "/mnt/data/A_black_and_white_photograph_features_three_small_.png"
+import time
+import logging
+from aiogram import Bot, Dispatcher, executor, types
 
+# --- Токен ---
+API_TOKEN = os.getenv("EPIBOT_TOKEN")
+
+if not API_TOKEN:
+    raise RuntimeError("EPIBOT_TOKEN отсутствует. Укажите токен в Render -> Environment Variables.")
+
+# --- Lockfile для защиты от нескольких инстансов ---
+LOCKFILE = "/tmp/epibot.lock"
+
+# --- Rate limit для частых отправок меню ---
+last_sent = {}
+MIN_SEND_INTERVAL = 300  # 5 минут
+
+# --- Логирование ---
+LOGFILE = "epibot.log"
+logging.basicConfig(level=logging.INFO, filename=LOGFILE,
+                    format="%(asctime)s %(levelname)s %(message)s")
+logging.getLogger().addHandler(logging.StreamHandler())
+
+# --- Инициализация бота ---
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher(storage=MemoryStorage())
+dp = Dispatcher(bot)
 
-class Lang(StatesGroup):
-    choosing = State()
-    chosen = State()
 
-# Клавиатура выбора языка
-kb_lang = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="Русский")],
-        [KeyboardButton(text="English")]
-    ],
-    resize_keyboard=True
-)
+# --- Клавиатуры и текст ---
+def language_keyboard():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("Русский", "English")
+    return kb
 
-# Основные меню (две версии)
-kb_main_ru = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="Поиск по линии")],
-        [KeyboardButton(text="Добавить собаку")],
-        [KeyboardButton(text="Помощь")],
-    ],
-    resize_keyboard=True
-)
+def main_menu_markup(lang="ru"):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    if lang == "en":
+        kb.add("Help")
+    else:
+        kb.add("Помощь")
+    return kb
 
-kb_main_en = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="Pedigree Check")],
-        [KeyboardButton(text="Add Dog")],
-        [KeyboardButton(text="Help")],
-    ],
-    resize_keyboard=True
-)
+def greetings_text(lang="ru"):
+    if lang == "en":
+        return "Please choose language."
+    return "Выберите язык."
 
-# ---------- START ----------
-@dp.message(Command("start"))
-async def start_cmd(message: types.Message, state: FSMContext):
-    await state.set_state(Lang.choosing)
-    await message.answer(
-        "Выберите язык.\nChoose your language.",
-        reply_markup=kb_lang
+
+# --- Безопасная отправка меню ---
+async def safe_send_language(message, text, markup):
+    uid = message.from_user.id
+    now = time.time()
+
+    if last_sent.get(uid, 0) + MIN_SEND_INTERVAL > now:
+        logging.info(f"Пропуск отправки меню для {uid} - cooldown")
+        return
+
+    last_sent[uid] = now
+    await message.answer(text, reply_markup=markup)
+
+
+# --- /start ---
+@dp.message_handler(commands=["start", "menu"])
+async def cmd_start(message: types.Message):
+
+    if message.chat.type != "private":
+        logging.info(f"Игнорирую /start из чата {message.chat.type}")
+        return
+
+    uid = message.from_user.id
+    logging.info(f"/start от {uid}")
+
+    if "user_lang" not in globals():
+        globals()["user_lang"] = {}
+    user_lang = globals()["user_lang"]
+
+    if uid in user_lang:
+        lang = user_lang[uid]
+        await safe_send_language(
+            message,
+            "Choose an option from the menu." if lang == "en" else "Выберите опцию в меню.",
+            main_menu_markup(lang)
+        )
+        return
+
+    await safe_send_language(message, greetings_text("ru"), language_keyboard())
+
+
+# --- Установка RU ---
+@dp.message_handler(lambda m: m.text in ["Русский", "Русky", "Русский🇷🇺"])
+async def set_ru(message):
+    if message.chat.type != "private":
+        return
+
+    uid = message.from_user.id
+    if "user_lang" not in globals():
+        globals()["user_lang"] = {}
+    globals()["user_lang"][uid] = "ru"
+
+    logging.info(f"Язык RU установлен для {uid}")
+    await message.answer("Язык установлен - русский", reply_markup=main_menu_markup("ru"))
+
+
+# --- Установка EN ---
+@dp.message_handler(lambda m: m.text in ["English"])
+async def set_en(message):
+    if message.chat.type != "private":
+        return
+
+    uid = message.from_user.id
+    if "user_lang" not in globals():
+        globals()["user_lang"] = {}
+    globals()["user_lang"][uid] = "en"
+
+    logging.info(f"Язык EN установлен для {uid}")
+    await message.answer("Language set to English", reply_markup=main_menu_markup("en"))
+
+
+# --- fallback ---
+@dp.message_handler()
+async def fallback_log(message):
+
+    logging.info(
+        f"fallback от {message.from_user.id} ({message.from_user.username}) "
+        f"chat={message.chat.id} type={message.chat.type}: {message.text!r}"
     )
 
-# ---------- Выбор языка ----------
-@dp.message(Lang.choosing)
-async def set_language(message: types.Message, state: FSMContext):
-    lang = message.text.strip().lower()
+    if message.from_user.is_bot:
+        logging.info("Игнорирую сообщение от бота")
+        return
 
-    if lang == "русский" or lang == "russian":
-        await state.update_data(lang="ru")
-        await state.set_state(Lang.chosen)
-        await message.answer(
-            "Язык выбран: Русский.\n\n"
-            "Привет. Я бот, который помогает проверять родословные Cane Corso на наличие эпилепсии в линиях.\n\n"
-            "Дорогой пользователь,\n"
-            "эпилепсия в породе Cane Corso, к сожалению, встречается нередко. Если ты не нашёл информацию в нашей базе, "
-            "это не означает, что в данной родословной эпилепсии не было. Это может значить только то, что нам пока не "
-            "известны такие случаи.\n\n"
-            "Если ты обнаружишь упоминание об эпилепсии в базе, это также не подтверждает её генетическое происхождение. "
-            "На сегодняшний день не существует никакого генетического теста, который мог бы определить эпилепсию или её "
-            "наследование. Эпилепсия может иметь как наследственные, так и приобретённые причины.\n\n"
-            "Выбери действие в меню ниже.",
-            reply_markup=kb_main_ru
-        )
+    if message.chat.type != "private":
+        logging.info("Игнорирую сообщение не из private чата")
+        return
 
-    elif lang == "english" or lang == "en":
-        await state.update_data(lang="en")
-        await state.set_state(Lang.chosen)
-        await message.answer(
-            "Language set to English.\n\n"
-            "Hello. I am a bot that helps you check Cane Corso pedigrees for epilepsy cases found in the bloodline.\n\n"
-            "Dear user,\n"
-            "epilepsy in the Cane Corso breed is unfortunately not rare. If you do not find information in our database, "
-            "it does not mean that epilepsy has never occurred in this pedigree. It may simply mean that no such cases have "
-            "been reported to us yet.\n\n"
-            "If you do find epilepsy cases in the database, this also does not confirm any genetic origin. At this time, "
-            "there is no genetic test of any kind that can diagnose epilepsy or determine whether it is inherited. "
-            "Epilepsy may have hereditary or acquired causes.\n\n"
-            "Choose an option from the menu below.",
-            reply_markup=kb_main_en
-        )
+    uid = message.from_user.id
+    if "user_lang" not in globals():
+        globals()["user_lang"] = {}
 
+    lang = globals()["user_lang"].get(uid, "ru")
+
+    if lang == "ru":
+        await message.answer("Я не понял. Отправь /start или выбери опцию в меню.")
     else:
-        await message.answer("Пожалуйста выберите язык. Please choose a language.")
+        await message.answer("I didn't understand. Send /start or choose an option from the menu.")
 
-# ---------- Запуск ----------
-async def main():
-    await dp.start_polling(bot)
+
+# --- Поиск возможных sleep() ---
+def find_sleep_lines(project_root="."):
+    import glob, re
+    results = []
+    for p in glob.glob(project_root + "/**/*.py", recursive=True):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                txt = f.read()
+            for m in re.finditer(r"sleep\(", txt):
+                results.append((p, m.group(0)))
+        except:
+            pass
+    return results
+
+
+# --- main ---
+def main():
+
+    # проверка двойного запуска
+    try:
+        if os.path.exists(LOCKFILE):
+            with open(LOCKFILE, "r") as f:
+                pid = f.read().strip()
+            logging.info(f"LOCKFILE найден, PID={pid}. Останавливаю запуск.")
+            return
+
+        with open(LOCKFILE, "w") as f:
+            f.write(str(os.getpid()))
+
+    except Exception as e:
+        logging.exception("Ошибка lockfile: %s", e)
+        return
+
+    logging.info(f"Старт бота PID={os.getpid()} token_suffix={API_TOKEN[-4:]}")
+    logging.info(f"Проверка на sleep: {find_sleep_lines('.')}")
+
+    try:
+        executor.start_polling(dp, skip_updates=True)
+    finally:
+        try:
+            if os.path.exists(LOCKFILE):
+                os.remove(LOCKFILE)
+        except:
+            pass
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
-
+    main()
