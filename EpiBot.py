@@ -8,7 +8,8 @@ from aiogram.fsm.context import FSMContext
 import asyncio
 
 # ---------- Настройки ----------
-API_TOKEN = "8427742313:AAHSe_3E8jv-3LCc4G1JDr9K-x0Aks1uwoY"  # если будешь менять токен, замени здесь
+import os
+API_TOKEN = os.getenv("API_TOKEN")
 AVATAR_LOCAL_PATH = "/mnt/data/A_black_and_white_photograph_features_three_small_.png"
 
 bot = Bot(token=API_TOKEN)
@@ -103,3 +104,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
