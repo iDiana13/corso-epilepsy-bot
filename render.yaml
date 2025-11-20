@@ -1,8 +1,0 @@
-services:
-  - type: web
-    name: corso-epilepsy-bot
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python EpiBot.py
-    runtime: python3.11
-
