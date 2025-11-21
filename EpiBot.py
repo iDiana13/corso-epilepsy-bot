@@ -49,9 +49,9 @@ def language_keyboard() -> types.ReplyKeyboardMarkup:
 def main_menu_markup(lang: str = "ru") -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     if lang == "en":
-        kb.row("📄 Help", "➕ Add case")
+        kb.row("📄 Help", "📤 Add case")
     else:
-        kb.row("📄 Помощь", "➕ Добавить историю")
+        kb.row("📄 Помощь", "📤 Добавить историю")
     return kb
 
 
@@ -245,6 +245,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
