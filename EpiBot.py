@@ -40,19 +40,14 @@ dp = Dispatcher(bot)
 
 # --- Keyboards & texts ---
 
-def language_keyboard() -> types.ReplyKeyboardMarkup:
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("Русский", "English")
-    return kb
-
-
 def main_menu_markup(lang: str = "ru") -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     if lang == "en":
-        kb.row("📄 Help", "✅ Consent")
+        kb.row("📄 Help", "➕ Add case")
     else:
-        kb.row("📄 Помощь", "✅ Согласие")
+        kb.row("📄 Помощь", "➕ Добавить историю")
     return kb
+
 
 
 
@@ -122,20 +117,37 @@ async def set_ru(message: types.Message):
 
 
 # --- English language selection ---
+# --- Add case -> show consent text (RU / EN) ---
 
-@dp.message_handler(lambda m: m.text == "English")
-async def set_en(message: types.Message):
-    if message.chat.type != "private":
-        return
-
+@dp.message_handler(lambda m: m.text in ["➕ Добавить историю", "➕ Add case"])
+async def handle_add_case_with_consent(message: types.Message):
     uid = message.from_user.id
-    user_lang[uid] = "en"
-    logging.info(f"Language EN set for {uid}")
+    lang = user_lang.get(uid, "ru")
 
-    await message.answer(
-        get_welcome_text("en"),
-        reply_markup=main_menu_markup("en"),
-    )
+    if lang == "ru":
+        text = (
+            "Соглашение на обработку информации и материалов:\n\n"
+            "Нажимая продолжить и отправляя историю, вы подтверждаете, что:\n"
+            "• отправляете информацию добровольно и по собственной инициативе\n"
+            "• разрешаете её хранение и обработку в рамках проекта по эпилепсии у Cane Corso\n"
+            "• понимаете, что данные могут использоваться в обезличенном виде для анализа и статистики\n"
+            "• не отправляете персональные данные третьих лиц без их согласия\n\n"
+            "Если вы согласны, отправьте, пожалуйста, историю одним сообщением.\n"
+            "Если не согласны, просто не отправляйте данные и вернитесь в меню."
+        )
+    else:
+        text = (
+            "Consent to process information and materials:\n\n"
+            "By continuing and sending a case, you confirm that:\n"
+            "• you provide information voluntarily and on your own initiative\n"
+            "• you allow it to be stored and processed within the Cane Corso epilepsy project\n"
+            "• the data may be used in anonymized form for analysis and statistics\n"
+            "• you will not send personal data of third parties without their consent\n\n"
+            "If you agree, please send your case in one message.\n"
+            "If you do not agree, simply do not send any data and return to the menu."
+        )
+
+    await message.answer(text)
 
 
 # --- Consent button (RU / EN) ---
@@ -222,6 +234,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
