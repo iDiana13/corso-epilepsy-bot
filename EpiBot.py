@@ -141,7 +141,7 @@ async def set_en(message: types.Message):
 
 # --- Add case -> show consent text (RU / EN) ---
 
-@dp.message_handler(lambda m: m.text in ["➕ Добавить историю", "➕ Add case"])
+@dp.message_handler(lambda m: m.text in ["📤 Добавить историю", "📤 Add case"])
 async def handle_add_case_with_consent(message: types.Message):
     uid = message.from_user.id
     lang = user_lang.get(uid, "ru")
@@ -245,6 +245,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
