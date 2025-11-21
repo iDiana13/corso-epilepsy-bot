@@ -154,6 +154,7 @@ async def handle_add_case_with_consent(message: types.Message):
             "Если вы согласны, введите латинскими буквами полную кличку собаки. Проверьте, чтобы не было ошибок, и следуйте дальнейшим указаниям.\n"
             "Если не согласны, просто не отправляйте данные и вернитесь в меню."
         )
+        back_label = "🔙 В меню"
     else:
         text = (
             "Consent to process information and materials:\n\n"
@@ -165,8 +166,23 @@ async def handle_add_case_with_consent(message: types.Message):
             "If you agree, please enter the dog’s full name in Latin characters. Make sure there are no mistakes and follow the next instructions.\n"
             "If you do not agree, simply do not send any data and return to the menu."
         )
+        back_label = "🔙 Back to menu"
 
-    await message.answer(text)
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton(back_label, callback_data="back_to_menu"))
+
+    await message.answer(text, reply_markup=kb)
+
+@dp.callback_query_handler(lambda c: c.data == "back_to_menu")
+async def handle_back_to_menu(call: types.CallbackQuery):
+    uid = call.from_user.id
+    lang = user_lang.get(uid, "ru")
+
+    await call.answer()
+    await call.message.answer(
+        get_welcome_text(lang),
+        reply_markup=main_menu_markup(lang),
+    )
 
 
 
@@ -242,6 +258,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
