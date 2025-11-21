@@ -49,10 +49,11 @@ def language_keyboard() -> types.ReplyKeyboardMarkup:
 def main_menu_markup(lang: str = "ru") -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     if lang == "en":
-        kb.add("Help")
+        kb.row("📄 Help", "✅ Consent")
     else:
-        kb.add("Помощь")
+        kb.row("📄 Помощь", "✅ Согласие")
     return kb
+
 
 
 # --- Main welcome texts ---
@@ -104,17 +105,6 @@ async def cmd_start(message: types.Message):
 
 
 # --- Russian language selection ---
-
-@dp.message_handler(lambda m: m.text == "Русский")
-async def set_ru(message: types.Message):
-    if message.chat.type != "private":
-        return
-
-    uid = message.from_user.id
-    user_lang[uid] = "ru"
-    logging.info(f"Language RU set for {uid}")
-
-   # --- Russian language selection ---
 
 @dp.message_handler(lambda m: m.text == "Русский")
 async def set_ru(message: types.Message):
@@ -187,30 +177,6 @@ async def fallback_log(message: types.Message):
         await message.answer("I didn't understand. Send /start, choose language and use the menu.")
 
 
-
-# --- Fallback for unknown input ---
-
-@dp.message_handler()
-async def fallback_log(message: types.Message):
-    logging.info(
-        f"fallback from {message.from_user.id} ({message.from_user.username}) "
-        f"chat={message.chat.id} type={message.chat.type}: {message.text!r}"
-    )
-
-    if message.from_user.is_bot:
-        return
-
-    if message.chat.type != "private":
-        return
-
-    uid = message.from_user.id
-    lang = user_lang.get(uid, "ru")
-
-    if lang == "ru":
-        await message.answer("Я не понял. Нажми /start, выбери язык и затем используй меню.")
-    else:
-        await message.answer("I didn't understand. Send /start, choose language and use the menu.")
-
 from threading import Thread
 from flask import Flask
 
@@ -256,6 +222,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
