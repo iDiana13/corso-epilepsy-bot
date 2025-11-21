@@ -1,4 +1,5 @@
 aiogram==2.25.1
 sqlalchemy
 aiosqlite
+Flask==3.0.0
 
