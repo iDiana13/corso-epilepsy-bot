@@ -49,9 +49,9 @@ def language_keyboard() -> types.ReplyKeyboardMarkup:
 def main_menu_markup(lang: str = "ru") -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     if lang == "en":
-        kb.row("📄 Help", "📤 Add case")
+        kb.row("📄 Help", "📂 Add case")
     else:
-        kb.row("📄 Помощь", "📤 Добавить историю")
+        kb.row("📄 Помощь", "📂 Добавить историю")
     return kb
 
 
@@ -62,12 +62,10 @@ def main_menu_markup(lang: str = "ru") -> types.ReplyKeyboardMarkup:
 def get_welcome_text(lang: str = "ru") -> str:
     if lang == "en":
         return (
-            "Language set to English.\n\n"
             "Hello. I am a bot that helps you check Cane Corso pedigrees for epilepsy cases found in the bloodline.\n\n"
-            "Dear user,\n"
+            "☯︎ Dear user,\n"
             "epilepsy in the Cane Corso breed is unfortunately not rare. If you do not find information in our database, "
-            "it does not mean that epilepsy has never occurred in this pedigree. It may simply mean that no such cases "
-            "have been reported to us yet.\n\n"
+            "it does not mean that epilepsy has never occurred in this pedigree. This may simply mean that I am not aware of any such cases.\n\n"
             "If you do find epilepsy cases in the database, this also does not confirm any genetic origin. "
             "At this time, there is no genetic test of any kind that can diagnose epilepsy or determine whether it is inherited. "
             "Epilepsy may have hereditary or acquired causes.\n\n"
@@ -75,11 +73,10 @@ def get_welcome_text(lang: str = "ru") -> str:
         )
 
     return (
-        "Язык выбран: Русский.\n\n"
-        "Привет. Я бот, который помогает проверять родословные Cane Corso на наличие эпилепсии в линиях.\n\n"
-        "Дорогой пользователь,\n"
+        "Привет! Я бот, который помогает проверять родословные Cane Corso на наличие эпилепсии в линиях.\n\n"
+        "☯︎ Дорогой пользователь,\n"
         "эпилепсия в породе Cane Corso, к сожалению, встречается нередко. Если ты не нашёл информацию в нашей базе, "
-        "это не означает, что в данной родословной эпилепсии не было. Это может значить только то, что нам пока не известны такие случаи.\n\n"
+        "это не означает, что в данной родословной эпилепсии не было. Это может значить, что мне такие случаи не известны.\n\n"
         "Если ты обнаружишь упоминание об эпилепсии в базе, это также не подтверждает её генетическое происхождение. "
         "На сегодняшний день не существует никакого генетического теста, который мог бы определить эпилепсию или её наследование. "
         "Эпилепсия может иметь как наследственные, так и приобретённые причины.\n\n"
@@ -141,7 +138,7 @@ async def set_en(message: types.Message):
 
 # --- Add case -> show consent text (RU / EN) ---
 
-@dp.message_handler(lambda m: m.text in ["📤 Добавить историю", "📤 Add case"])
+@dp.message_handler(lambda m: m.text in ["📂 Добавить историю", "📂 Add case"])
 async def handle_add_case_with_consent(message: types.Message):
     uid = message.from_user.id
     lang = user_lang.get(uid, "ru")
@@ -154,7 +151,7 @@ async def handle_add_case_with_consent(message: types.Message):
             "• разрешаете её хранение и обработку в рамках проекта по эпилепсии у Cane Corso\n"
             "• понимаете, что данные могут использоваться в обезличенном виде для анализа и статистики\n"
             "• не отправляете персональные данные третьих лиц без их согласия\n\n"
-            "Если вы согласны, отправьте, пожалуйста, историю одним сообщением.\n"
+            "Если вы согласны, введите латинскими буквами полную кличку собаки. Проверьте, чтобы не было ошибок, и следуйте дальнейшим указаниям.\n"
             "Если не согласны, просто не отправляйте данные и вернитесь в меню."
         )
     else:
@@ -165,7 +162,7 @@ async def handle_add_case_with_consent(message: types.Message):
             "• you allow it to be stored and processed within the Cane Corso epilepsy project\n"
             "• the data may be used in anonymized form for analysis and statistics\n"
             "• you will not send personal data of third parties without their consent\n\n"
-            "If you agree, please send your case in one message.\n"
+            "If you agree, please enter the dog’s full name in Latin characters. Make sure there are no mistakes and follow the next instructions.\n"
             "If you do not agree, simply do not send any data and return to the menu."
         )
 
@@ -245,6 +242,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
