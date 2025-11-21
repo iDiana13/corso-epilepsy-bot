@@ -32,7 +32,7 @@ logging.basicConfig(
 )
 logging.getLogger().addHandler(logging.StreamHandler())
 
-    # --- Bot init ---
+# --- Bot init ---
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
@@ -53,6 +53,7 @@ def main_menu_markup(lang: str = "ru") -> types.ReplyKeyboardMarkup:
     else:
         kb.row("📄 Помощь", "➕ Добавить историю")
     return kb
+
 
 
 
@@ -244,6 +245,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
