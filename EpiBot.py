@@ -192,9 +192,8 @@ def main():
 
     logging.info(f"Bot start PID={os.getpid()} token_suffix={API_TOKEN[-4:]}")
 
-    try:
-Thread(target=run_flask, daemon=True).start()
-        
+   try:
+        Thread(target=run_flask, daemon=True).start()
         executor.start_polling(dp, skip_updates=True)
     finally:
         try:
@@ -206,4 +205,5 @@ Thread(target=run_flask, daemon=True).start()
 
 if __name__ == "__main__":
     main()
+
 
