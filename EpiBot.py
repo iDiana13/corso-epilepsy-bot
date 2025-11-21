@@ -33,29 +33,27 @@ logging.basicConfig(
 logging.getLogger().addHandler(logging.StreamHandler())
 
     # --- Bot init ---
-  
-    bot = Bot(token=API_TOKEN)
-    dp = Dispatcher(bot)
-  
-  
-    # --- Keyboards & texts ---
-  
-    def language_keyboard() -> types.ReplyKeyboardMarkup:
-        kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        kb.add("Русский", "English")
-       return kb
-  
-  
-    def main_menu_markup(lang: str = "ru") -> types.ReplyKeyboardMarkup:
-       kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        if lang == "en":
-            kb.row("📄 Help", "➕ Add case")
-        else:
-            kb.row("📄 Помощь", "➕ Добавить историю")
-        return kb
-  
-  
-  # --- Bot commands ---
+
+bot = Bot(token=API_TOKEN)
+dp = Dispatcher(bot)
+
+
+# --- Keyboards & texts ---
+
+def language_keyboard() -> types.ReplyKeyboardMarkup:
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("Русский", "English")
+    return kb
+
+
+def main_menu_markup(lang: str = "ru") -> types.ReplyKeyboardMarkup:
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    if lang == "en":
+        kb.row("📄 Help", "➕ Add case")
+    else:
+        kb.row("📄 Помощь", "➕ Добавить историю")
+    return kb
+
 
 
 # --- Main welcome texts ---
@@ -246,6 +244,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
