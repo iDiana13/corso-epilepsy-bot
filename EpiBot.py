@@ -154,7 +154,7 @@ async def handle_add_case_with_consent(message: types.Message):
             "Если вы согласны, введите латинскими буквами полную кличку собаки. Проверьте, чтобы не было ошибок, и следуйте дальнейшим указаниям.\n"
             "Если не согласны, просто не отправляйте данные и вернитесь в меню."
         )
-    else:
+        else:
         text = (
             "Consent to process information and materials:\n\n"
             "By continuing and sending a case, you confirm that:\n"
@@ -166,7 +166,8 @@ async def handle_add_case_with_consent(message: types.Message):
             "If you do not agree, simply do not send any data and return to the menu."
         )
 
-   await message.answer(text)
+    await message.answer(text)
+
 
 
 
@@ -242,6 +243,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
