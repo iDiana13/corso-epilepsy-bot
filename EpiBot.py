@@ -151,10 +151,11 @@ async def handle_add_case_with_consent(message: types.Message):
             "• разрешаете её хранение и обработку в рамках проекта по эпилепсии у Cane Corso\n"
             "• понимаете, что данные могут использоваться в обезличенном виде для анализа и статистики\n"
             "• не отправляете персональные данные третьих лиц без их согласия\n\n"
-            "Если вы согласны, введите латинскими буквами полную кличку собаки. Проверьте, чтобы не было ошибок, и следуйте дальнейшим указаниям.\n"
+            "Если вы согласны, введите латинскими буквами полную кличку собаки. "
+            "Проверьте, чтобы не было ошибок, и следуйте дальнейшим указаниям.\n"
             "Если не согласны, просто не отправляйте данные и вернитесь в меню."
         )
-        else:
+    else:
         text = (
             "Consent to process information and materials:\n\n"
             "By continuing and sending a case, you confirm that:\n"
@@ -162,11 +163,16 @@ async def handle_add_case_with_consent(message: types.Message):
             "• you allow it to be stored and processed within the Cane Corso epilepsy project\n"
             "• the data may be used in anonymized form for analysis and statistics\n"
             "• you will not send personal data of third parties without their consent\n\n"
-            "If you agree, please enter the dog’s full name in Latin characters. Make sure there are no mistakes and follow the next instructions.\n"
+            "If you agree, please enter the dog’s full name in Latin characters. "
+            "Make sure there are no mistakes and follow the next instructions.\n"
             "If you do not agree, simply do not send any data and return to the menu."
         )
 
     await message.answer(text)
+
+
+
+    
 
 
 
@@ -243,6 +249,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
