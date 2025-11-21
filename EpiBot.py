@@ -160,6 +160,18 @@ async def fallback_log(message: types.Message):
     else:
         await message.answer("I didn't understand. Send /start, choose language and use the menu.")
 
+from threading import Thread
+from flask import Flask
+
+app = Flask(__name__)
+
+@app.route("/")
+def healthcheck():
+    return "OK", 200
+
+def run_flask():
+    app.run(host="0.0.0.0", port=10000)
+    
 
 # --- main ---
 
@@ -181,6 +193,8 @@ def main():
     logging.info(f"Bot start PID={os.getpid()} token_suffix={API_TOKEN[-4:]}")
 
     try:
+Thread(target=run_flask, daemon=True).start()
+        
         executor.start_polling(dp, skip_updates=True)
     finally:
         try:
@@ -192,3 +206,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
