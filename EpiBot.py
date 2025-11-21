@@ -114,6 +114,17 @@ async def set_ru(message: types.Message):
     user_lang[uid] = "ru"
     logging.info(f"Language RU set for {uid}")
 
+   # --- Russian language selection ---
+
+@dp.message_handler(lambda m: m.text == "Русский")
+async def set_ru(message: types.Message):
+    if message.chat.type != "private":
+        return
+
+    uid = message.from_user.id
+    user_lang[uid] = "ru"
+    logging.info(f"Language RU set for {uid}")
+
     await message.answer(
         get_welcome_text("ru"),
         reply_markup=main_menu_markup("ru"),
@@ -135,6 +146,46 @@ async def set_en(message: types.Message):
         get_welcome_text("en"),
         reply_markup=main_menu_markup("en"),
     )
+
+
+# --- Consent button (RU / EN) ---
+
+@dp.message_handler(lambda m: m.text in ["✅ Согласие", "✅ Consent"])
+async def handle_consent(message: types.Message):
+    uid = message.from_user.id
+    lang = user_lang.get(uid, "ru")
+
+    if lang == "ru":
+        text = "Здесь будет текст согласия. Пока просто тестируем кнопку."
+    else:
+        text = "This is the consent placeholder. We are only testing the button."
+
+    await message.answer(text)
+
+
+# --- Fallback for unknown input ---
+
+@dp.message_handler()
+async def fallback_log(message: types.Message):
+    logging.info(
+        f"fallback from {message.from_user.id} ({message.from_user.username}) "
+        f"chat={message.chat.id} type={message.chat.type}: {message.text!r}"
+    )
+
+    if message.from_user.is_bot:
+        return
+
+    if message.chat.type != "private":
+        return
+
+    uid = message.from_user.id
+    lang = user_lang.get(uid, "ru")
+
+    if lang == "ru":
+        await message.answer("Я не понял. Нажми /start, выбери язык и затем используй меню.")
+    else:
+        await message.answer("I didn't understand. Send /start, choose language and use the menu.")
+
 
 
 # --- Fallback for unknown input ---
@@ -205,6 +256,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
