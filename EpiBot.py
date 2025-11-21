@@ -39,14 +39,22 @@ dp = Dispatcher(bot)
 
 
 # --- Keyboards & texts ---
+ 
+ def language_keyboard() -> types.ReplyKeyboardMarkup:
+      kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+     kb.add("Русский", "English")
+     return kb
+ 
+ 
+ def main_menu_markup(lang: str = "ru") -> types.ReplyKeyboardMarkup:
+      kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+      if lang == "en":
+         kb.row("📄 Help", "➕ Add case")
+      else:
+          kb.row("📄 Помощь", "➕ Добавить историю")
+      return kb
 
-def main_menu_markup(lang: str = "ru") -> types.ReplyKeyboardMarkup:
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    if lang == "en":
-        kb.row("📄 Help", "➕ Add case")
-    else:
-        kb.row("📄 Помощь", "➕ Добавить историю")
-    return kb
+
 
 
 
@@ -117,6 +125,22 @@ async def set_ru(message: types.Message):
 
 
 # --- English language selection ---
+
+@dp.message_handler(lambda m: m.text == "English")
+async def set_en(message: types.Message):
+    if message.chat.type != "private":
+        return
+
+    uid = message.from_user.id
+    user_lang[uid] = "en"
+    logging.info(f"Language EN set for {uid}")
+
+    await message.answer(
+        get_welcome_text("en"),
+        reply_markup=main_menu_markup("en"),
+    )
+
+
 # --- Add case -> show consent text (RU / EN) ---
 
 @dp.message_handler(lambda m: m.text in ["➕ Добавить историю", "➕ Add case"])
@@ -150,19 +174,8 @@ async def handle_add_case_with_consent(message: types.Message):
     await message.answer(text)
 
 
-# --- Consent button (RU / EN) ---
 
-@dp.message_handler(lambda m: m.text in ["✅ Согласие", "✅ Consent"])
-async def handle_consent(message: types.Message):
-    uid = message.from_user.id
-    lang = user_lang.get(uid, "ru")
 
-    if lang == "ru":
-        text = "Здесь будет текст согласия. Пока просто тестируем кнопку."
-    else:
-        text = "This is the consent placeholder. We are only testing the button."
-
-    await message.answer(text)
 
 
 # --- Fallback for unknown input ---
@@ -234,6 +247,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
