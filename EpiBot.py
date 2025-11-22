@@ -452,6 +452,26 @@ def insufficient_data_text(lang: str) -> str:
             "• либо кличку матери и кличку отца, если ссылок нет."
         )
 
+async def send_dogs_menu_from_message(message: types.Message, uid: int):
+    lang = get_user_lang(uid)
+    text = dogs_menu_text(lang)
+    await message.answer(text)
+    user_add_case_state.pop(uid, None)
+    user_add_case_data.pop(uid, None)
+    user_add_case_substate.pop(uid, None)
+    user_add_case_empty_field.pop(uid, None)
+
+
+async def send_dogs_menu_from_query(query: types.CallbackQuery, uid: int):
+    lang = get_user_lang(uid)
+    text = dogs_menu_text(lang)
+    await query.answer()
+    await query.message.edit_text(text)
+    user_add_case_state.pop(uid, None)
+    user_add_case_data.pop(uid, None)
+    user_add_case_substate.pop(uid, None)
+    user_add_case_empty_field.pop(uid, None)
+
 
 # --- Database helper functions ---
 
@@ -707,86 +727,30 @@ async def handle_back_to_bot_menu(message: types.Message):
 @dp.message_handler(lambda m: m.text in ["Продолжаю", "I continue"])
 async def handle_add_case_start_steps(message: types.Message):
     uid = message.from_user.id
-    lang = user_lang.get(uid, "ru")
+    lang = get_user_lang(uid)
 
-    user_add_case_state[uid] = "dog_name"
-    user_add_case_data[uid] = {}
+    user_add_case_state[uid] = ADD_STATE_DOG
+    user_add_case_substate[uid] = None
+    user_add_case_empty_field[uid] = None
+    user_add_case_data[uid] = {
+        "dog_name": "",
+        "dog_pedigree_url": "",
+        "dam_name": "",
+        "dam_pedigree_url": "",
+        "sire_name": "",
+        "sire_pedigree_url": "",
+        "sex": "",
+        "birth_date": "",
+    }
 
-    if lang == "en":
-        text = (
-            "Please enter the dog's full registered name in Latin letters "
-            "exactly as written in the pedigree."
-        )
-    else:
-        text = (
-            "Пожалуйста, введите полную кличку собаки латиницей, "
-            "точно так как она указана в родословной."
-        )
-
-    await message.answer(text)
-
-
-@dp.message_handler(lambda m: user_add_case_state.get(m.from_user.id) == "dog_name")
-async def handle_add_case_dog_name(message: types.Message):
-    uid = message.from_user.id
-    lang = user_lang.get(uid, "ru")
-
-    user_add_case_data.setdefault(uid, {})["dog_name"] = message.text.strip()
-    user_add_case_state[uid] = "dam_name"
-
-    if lang == "en":
-        text = (
-            "Enter the dam's name (mother) in Latin letters "
-            "exactly as written in the pedigree."
-        )
-    else:
-        text = (
-            "Введите имя мамы латиницей, "
-            "точно так как оно указано в родословной."
-        )
-
-    await message.answer(text)
-
-
-@dp.message_handler(lambda m: user_add_case_state.get(m.from_user.id) == "dam_name")
-async def handle_add_case_dam_name(message: types.Message):
-    uid = message.from_user.id
-    lang = user_lang.get(uid, "ru")
-
-    user_add_case_data.setdefault(uid, {})["dam_name"] = message.text.strip()
-    user_add_case_state[uid] = "sire_name"
-
-    if lang == "en":
-        text = (
-            "Enter the sire's name (father) in Latin letters "
-            "exactly as written in the pedigree."
-        )
-    else:
-        text = (
-            "Введите имя папы латиницей, "
-            "точно так как оно указано в родословной."
-        )
-
-    await message.answer(text)
-
-
-@dp.message_handler(lambda m: user_add_case_state.get(m.from_user.id) == "sire_name")
-async def handle_add_case_sire_name(message: types.Message):
-    uid = message.from_user.id
-    lang = user_lang.get(uid, "ru")
-
-    user_add_case_data.setdefault(uid, {})["sire_name"] = message.text.strip()
-
-    data = user_add_case_data.get(uid, {}).copy()
-    logging.info(f"Add case basic pedigree data from {uid}: {data}")
-
-    # --- Сохраняем в базу ---
-    save_case(
-        user_id=uid,
-        dog=data.get("dog_name"),
-        dam=data.get("dam_name"),
-        sire=data.get("sire_name"),
+    await message.answer(
+        dog_step_intro(lang),
+        reply_markup=add_case_inline_nav(lang),
     )
+
+
+
+
 
     # --- Очищаем временные данные ---
     user_add_case_state.pop(uid, None)
@@ -806,6 +770,61 @@ async def handle_add_case_sire_name(message: types.Message):
         markup = main_menu_markup("ru")
 
     await message.answer(text, reply_markup=markup)
+
+@dp.message_handler(lambda m: user_add_case_state.get(m.from_user.id) is not None)
+async def handle_add_case_message(message: types.Message):
+    uid = message.from_user.id
+    lang = get_user_lang(uid)
+    state = user_add_case_state.get(uid)
+    data = user_add_case_data.setdefault(uid, {})
+
+    text = (message.text or "").strip()
+    if not text:
+        return
+
+    # Шаг собаки: сначала имя, потом пробуем воспринимать как ссылку
+    if state == ADD_STATE_DOG:
+        if not data.get("dog_name"):
+            data["dog_name"] = text
+        else:
+            if is_valid_pedigree_url(text):
+                data["dog_pedigree_url"] = text
+            else:
+                await message.answer(url_error_text(lang))
+
+    elif state == ADD_STATE_DAM:
+        if not data.get("dam_name"):
+            data["dam_name"] = text
+        else:
+            if is_valid_pedigree_url(text):
+                data["dam_pedigree_url"] = text
+            else:
+                await message.answer(url_error_text(lang))
+
+    elif state == ADD_STATE_SIRE:
+        if not data.get("sire_name"):
+            data["sire_name"] = text
+        else:
+            if is_valid_pedigree_url(text):
+                data["sire_pedigree_url"] = text
+            else:
+                await message.answer(url_error_text(lang))
+
+    elif state == ADD_STATE_SEX:
+        # Пол выбираем только кнопками, текст игнорируем
+        await message.answer(
+            sex_step_intro(lang),
+            reply_markup=add_case_inline_nav_with_sex(lang),
+        )
+
+    elif state == ADD_STATE_BIRTH:
+        if text:
+            if is_valid_birth_date(text):
+                data["birth_date"] = text
+            else:
+                await message.answer(date_format_error_text(lang))
+
+    user_add_case_data[uid] = data
 
 
 @dp.message_handler(commands=["delete"])
@@ -905,6 +924,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
