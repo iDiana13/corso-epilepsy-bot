@@ -1,6 +1,11 @@
+import os
+import logging
+
 from sqlalchemy import create_engine, text
+from aiogram import Bot, Dispatcher, executor, types
 import re
 from datetime import datetime
+
 
 # --- Admin users ---
 ADMINS = {5059876030}
@@ -151,7 +156,6 @@ def empty_field_confirm_keyboard(lang: str = "ru") -> types.InlineKeyboardMarkup
     )
     return kb
 
-
 def cancel_confirm_keyboard(lang: str = "ru") -> types.InlineKeyboardMarkup:
     if lang == "en":
         yes_text = "Yes"
@@ -163,9 +167,11 @@ def cancel_confirm_keyboard(lang: str = "ru") -> types.InlineKeyboardMarkup:
     kb = types.InlineKeyboardMarkup()
     kb.add(
         types.InlineKeyboardButton(yes_text, callback_data=CB_ADD_CANCEL_YES),
-        types.inlineKeyboardButton(no_text, callback_data=CB_ADD_CANCEL_NO),
+        types.InlineKeyboardButton(no_text, callback_data=CB_ADD_CANCEL_NO),
     )
     return kb
+
+
 
 def get_user_lang(uid: int) -> str:
     lang = user_lang.get(uid, "ru")
@@ -1041,6 +1047,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
