@@ -1,14 +1,27 @@
-# EpiBot.py
-# Requirements: aiogram==2.25.1
-# Token must be provided via env var EPIBOT_TOKEN
+from sqlalchemy import create_engine, text
 
-import os
-import time
-import logging
-from aiogram import Bot, Dispatcher, executor, types
+# --- Admin users ---
+ADMINS = {5059876030}
 
-# --- Admin users who can use /delete ---
-ADMINS = {5059876030}   # ← твой Telegram user_id
+# --- Database init ---
+engine = create_engine("sqlite:///epibot.db", echo=False)
+
+# --- Ensure table exists ---
+with engine.connect() as connection:
+    connection.execute(text("""
+    CREATE TABLE IF NOT EXISTS cases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        dog_name TEXT,
+        dam_name TEXT,
+        sire_name TEXT,
+        sex TEXT,
+        birth_date TEXT,
+        timestamp TEXT
+    );
+    """))
+    connection.commit()
+
 
 # --- Token ---
 
@@ -27,18 +40,50 @@ user_lang = {}          # язык пользователя
 user_add_case_state = {}  # состояние пошагового ввода истории: dog_name / dam_name / sire_name
 user_add_case_data = {}   # временные данные по собакам
 
+# --- Database helper functions ---
+
+
+def save_case(
+    user_id: int,
+    dog: str,
+    dam: str,
+    sire: str,
+    sex: str = None,
+    birth_date: str = None,
+):
+    """Сохраняет базовые данные по собаке в SQLite."""
+    with engine.connect() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO cases (
+                    user_id, dog_name, dam_name, sire_name, sex, birth_date, timestamp
+                )
+                VALUES (:uid, :dog, :dam, :sire, :sex, :birth_date, datetime('now'))
+                """
+            ),
+            {
+                "uid": user_id,
+                "dog": dog,
+                "dam": dam,
+                "sire": sire,
+                "sex": sex,
+                "birth_date": birth_date,
+            },
+        )
+        connection.commit()
+    logging.info(f"Saved case for user={user_id}, dog='{dog}'")
+
+
 def delete_case_by_dog_name(name: str):
-    """Удаляет запись из базы по имени собаки."""
-    try:
-        with engine.connect() as connection:
-            connection.execute(
-                sqlalchemy.text("DELETE FROM cases WHERE dog_name = :name"),
-                {"name": name}
-            )
-            connection.commit()
-        logging.info(f"Deleted case with dog_name='{name}'")
-    except Exception as e:
-        logging.error(f"Error deleting case '{name}': {e}")
+    """Удаляет записи из SQLite по имени собаки."""
+    with engine.connect() as connection:
+        connection.execute(
+            text("DELETE FROM cases WHERE dog_name = :name"),
+            {"name": name},
+        )
+        connection.commit()
+    logging.info(f"Deleted cases with dog_name='{name}'")
 
 
 # --- Logging ---
@@ -413,6 +458,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
