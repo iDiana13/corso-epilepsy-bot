@@ -1,4 +1,6 @@
 from sqlalchemy import create_engine, text
+import re
+from datetime import datetime
 
 # --- Admin users ---
 ADMINS = {5059876030}
@@ -13,8 +15,11 @@ with engine.connect() as connection:
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         dog_name TEXT,
+        dog_pedigree_url TEXT,
         dam_name TEXT,
+        dam_pedigree_url TEXT,
         sire_name TEXT,
+        sire_pedigree_url TEXT,
         sex TEXT,
         birth_date TEXT,
         timestamp TEXT
@@ -36,43 +41,477 @@ LOCKFILE = "/tmp/epibot.lock"
 
 # --- In-memory language storage (per process only) ---
 
-user_lang = {}          # язык пользователя
-user_add_case_state = {}  # состояние пошагового ввода истории: dog_name / dam_name / sire_name
-user_add_case_data = {}   # временные данные по собакам
+user_lang = {}             # язык пользователя
+user_add_case_state = {}   # состояние анкеты по собаке
+user_add_case_data = {}    # временные данные по собакам
+user_add_case_substate = {}      # подстатус, например подтверждение пустого поля
+user_add_case_empty_field = {}   # какое поле сейчас подтверждаем как пустое
+
+def dogs_menu_text(lang: str = "ru") -> str:
+    if lang == "en":
+        return (
+            "Dog menu.\n"
+            "Later here will be:\n"
+            "• Add dog\n"
+            "• Find dog"
+        )
+    else:
+        return (
+            "Меню работы с собаками.\n"
+            "Позже здесь будут:\n"
+            "• Добавить собаку\n"
+            "• Найти собаку"
+        )
+
+
+def add_case_inline_nav(lang: str = "ru") -> types.InlineKeyboardMarkup:
+    if lang == "en":
+        back_text = "Back"
+        cancel_text = "Cancel"
+        next_text = "Next"
+    else:
+        back_text = "Назад"
+        cancel_text = "Отмена"
+        next_text = "Вперёд"
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton(back_text, callback_data=CB_ADD_BACK),
+        types.InlineKeyboardButton(cancel_text, callback_data=CB_ADD_CANCEL),
+        types.InlineKeyboardButton(next_text, callback_data=CB_ADD_NEXT),
+    )
+    return kb
+
+
+def add_case_inline_nav_with_sex(lang: str = "ru") -> types.InlineKeyboardMarkup:
+    if lang == "en":
+        back_text = "Back"
+        cancel_text = "Cancel"
+        next_text = "Next"
+        male_text = "Male"
+        female_text = "Female"
+    else:
+        back_text = "Назад"
+        cancel_text = "Отмена"
+        next_text = "Вперёд"
+        male_text = "Кобель"
+        female_text = "Сука"
+
+    kb = types.InlineKeyboardMarkup()
+    kb.row(
+        types.InlineKeyboardButton(back_text, callback_data=CB_ADD_BACK),
+        types.InlineKeyboardButton(cancel_text, callback_data=CB_ADD_CANCEL),
+        types.InlineKeyboardButton(next_text, callback_data=CB_ADD_NEXT),
+    )
+    kb.row(
+        types.InlineKeyboardButton(male_text, callback_data=CB_ADD_SEX_MALE),
+        types.InlineKeyboardButton(female_text, callback_data=CB_ADD_SEX_FEMALE),
+    )
+    return kb
+
+
+def empty_field_confirm_keyboard(lang: str = "ru") -> types.InlineKeyboardMarkup:
+    if lang == "en":
+        yes_text = "Yes, leave empty"
+        no_text = "No, go back"
+    else:
+        yes_text = "Да, оставить пустым"
+        no_text = "Нет, вернуться к вводу"
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton(yes_text, callback_data=CB_ADD_EMPTY_YES),
+        types.InlineKeyboardButton(no_text, callback_data=CB_ADD_EMPTY_NO),
+    )
+    return kb
+
+
+def cancel_confirm_keyboard(lang: str = "ru") -> types.InlineKeyboardMarkup:
+    if lang == "en":
+        yes_text = "Yes"
+        no_text = "No"
+    else:
+        yes_text = "Да"
+        no_text = "Нет"
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+           kb.add(
+        types.InlineKeyboardButton(yes_text, callback_data=CB_ADD_CANCEL_YES),
+        types.InlineKeyboardButton(no_text, callback_data=CB_ADD_CANCEL_NO),
+    )
+
+    return kb
+
+
+# --- FSM for add case ---
+
+ADD_STATE_DOG = "dog"
+ADD_STATE_DAM = "dam"
+ADD_STATE_SIRE = "sire"
+ADD_STATE_SEX = "sex"
+ADD_STATE_BIRTH = "birth_date"
+
+ADD_SUBSTATE_EMPTY_CONFIRM = "empty_confirm"
+
+PEDIGREE_PREFIX = "https://canecorsopedigree.com/"
+
+CB_ADD_BACK = "add_back"
+CB_ADD_CANCEL = "add_cancel"
+CB_ADD_NEXT = "add_next"
+
+CB_ADD_CANCEL_YES = "add_cancel_yes"
+CB_ADD_CANCEL_NO = "add_cancel_no"
+
+CB_ADD_EMPTY_YES = "add_empty_yes"
+CB_ADD_EMPTY_NO = "add_empty_no"
+
+CB_ADD_SEX_MALE = "add_sex_male"
+CB_ADD_SEX_FEMALE = "add_sex_female"
+
+def dogs_menu_text(lang: str = "ru") -> str:
+    if lang == "en":
+        return (
+            "Dog menu.\n"
+            "Later here will be:\n"
+            "• Add dog\n"
+            "• Find dog"
+        )
+    else:
+        return (
+            "Меню работы с собаками.\n"
+            "Позже здесь будут:\n"
+            "• Добавить собаку\n"
+            "• Найти собаку"
+        )
+
+
+def add_case_inline_nav(lang: str = "ru") -> types.InlineKeyboardMarkup:
+    if lang == "en":
+        back_text = "Back"
+        cancel_text = "Cancel"
+        next_text = "Next"
+    else:
+        back_text = "Назад"
+        cancel_text = "Отмена"
+        next_text = "Вперёд"
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton(back_text, callback_data=CB_ADD_BACK),
+        types.InlineKeyboardButton(cancel_text, callback_data=CB_ADD_CANCEL),
+        types.InlineKeyboardButton(next_text, callback_data=CB_ADD_NEXT),
+    )
+    return kb
+
+
+def add_case_inline_nav_with_sex(lang: str = "ru") -> types.InlineKeyboardMarkup:
+    if lang == "en":
+        back_text = "Back"
+        cancel_text = "Cancel"
+        next_text = "Next"
+        male_text = "Male"
+        female_text = "Female"
+    else:
+        back_text = "Назад"
+        cancel_text = "Отмена"
+        next_text = "Вперёд"
+        male_text = "Кобель"
+        female_text = "Сука"
+
+    kb = types.InlineKeyboardMarkup()
+    kb.row(
+        types.InlineKeyboardButton(back_text, callback_data=CB_ADD_BACK),
+        types.InlineKeyboardButton(cancel_text, callback_data=CB_ADD_CANCEL),
+        types.InlineKeyboardButton(next_text, callback_data=CB_ADD_NEXT),
+    )
+    kb.row(
+        types.InlineKeyboardButton(male_text, callback_data=CB_ADD_SEX_MALE),
+        types.InlineKeyboardButton(female_text, callback_data=CB_ADD_SEX_FEMALE),
+    )
+    return kb
+
+
+def empty_field_confirm_keyboard(lang: str = "ru") -> types.InlineKeyboardMarkup:
+    if lang == "en":
+        yes_text = "Yes, leave empty"
+        no_text = "No, go back"
+    else:
+        yes_text = "Да, оставить пустым"
+        no_text = "Нет, вернуться к вводу"
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton(yes_text, callback_data=CB_ADD_EMPTY_YES),
+        types.InlineKeyboardButton(no_text, callback_data=CB_ADD_EMPTY_NO),
+    )
+    return kb
+
+
+def cancel_confirm_keyboard(lang: str = "ru") -> types.InlineKeyboardMarkup:
+    if lang == "en":
+        yes_text = "Yes"
+        no_text = "No"
+    else:
+        yes_text = "Да"
+        no_text = "Нет"
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton(yes_text, callback_data=CB_ADD_CANCEL_YES),
+        types.inlineKeyboardButton(no_text, callback_data=CB_ADD_CANCEL_NO),
+    )
+    return kb
+
+def get_user_lang(uid: int) -> str:
+    lang = user_lang.get(uid, "ru")
+    return "en" if lang == "en" else "ru"
+
+
+def is_valid_birth_date(s: str) -> bool:
+    if not re.fullmatch(r"\d{4}\.\d{2}\.\d{2}", s):
+        return False
+    year = int(s[0:4])
+    month = int(s[5:7])
+    day = int(s[8:10])
+    try:
+        datetime(year, month, day)
+    except ValueError:
+        return False
+    return True
+
+
+def is_valid_pedigree_url(url: str) -> bool:
+    return url.startswith(PEDIGREE_PREFIX)
+
+
+def is_case_minimal_ok(data: dict) -> bool:
+    dog_name = (data.get("dog_name") or "").strip()
+    if not dog_name:
+        return False
+
+    links = [
+        (data.get("dog_pedigree_url") or "").strip(),
+        (data.get("dam_pedigree_url") or "").strip(),
+        (data.get("sire_pedigree_url") or "").strip(),
+    ]
+    has_link = any(links)
+
+    if has_link:
+        return True
+
+    dam_name = (data.get("dam_name") or "").strip()
+    sire_name = (data.get("sire_name") or "").strip()
+    if not dam_name or not sire_name:
+        return False
+
+    return True
+
+def dog_step_intro(lang: str) -> str:
+    if lang == "en":
+        return (
+            "Step 1. Dog.\n\n"
+            "Send the dog's name in one message.\n"
+            "If there is a pedigree link, send it as a separate message.\n"
+            "When you finish this block, press “Next”."
+        )
+    else:
+        return (
+            "Шаг 1. Собака.\n\n"
+            "Сначала отправьте кличку собаки одним сообщением.\n"
+            "Если есть ссылка на родословную, отправьте её отдельным сообщением.\n"
+            "Когда закончите с этим блоком (имя и ссылка), нажмите «Вперёд»."
+        )
+
+
+def dam_step_intro(lang: str) -> str:
+    if lang == "en":
+        return (
+            "Step 2. Dam (mother).\n\n"
+            "Send the dam's name in one message.\n"
+            "If there is a pedigree link, send it as a separate message.\n"
+            "When you finish this block, press “Next”."
+        )
+    else:
+        return (
+            "Шаг 2. Мать.\n\n"
+            "Отправьте кличку мамы одним сообщением.\n"
+            "Если есть ссылка на родословную мамы, отправьте её отдельным сообщением.\n"
+            "Когда закончите с этим блоком, нажмите «Вперёд»."
+        )
+
+
+def sire_step_intro(lang: str) -> str:
+    if lang == "en":
+        return (
+            "Step 3. Sire (father).\n\n"
+            "Send the sire's name in one message.\n"
+            "If there is a pedigree link, send it as a separate message.\n"
+            "When you finish this block, press “Next”."
+        )
+    else:
+        return (
+            "Шаг 3. Отец.\n\n"
+            "Отправьте кличку папы одним сообщением.\n"
+            "Если есть ссылка на родословную папы, отправьте её отдельным сообщением.\n"
+            "Когда закончите с этим блоком, нажмите «Вперёд»."
+        )
+
+
+def sex_step_intro(lang: str) -> str:
+    if lang == "en":
+        return (
+            "Step 4. Sex.\n\n"
+            "Choose the dog's sex using the buttons.\n"
+            "If you want to skip this field, press “Next”."
+        )
+    else:
+        return (
+            "Шаг 4. Пол.\n\n"
+            "Выберите пол собаки с помощью кнопок ниже.\n"
+            "Если хотите пропустить поле, нажмите «Вперёд»."
+        )
+
+
+def birth_step_intro(lang: str) -> str:
+    if lang == "en":
+        return (
+            "Step 5. Date of birth.\n\n"
+            "Enter the date in the format YYYY.MM.DD, for example: 2021.03.27.\n"
+            "If you do not know the exact date, you can leave the field empty and press “Next”."
+        )
+    else:
+        return (
+            "Шаг 5. Дата рождения.\n\n"
+            "Введите дату рождения в формате ГГГГ.ММ.ДД, например: 2021.03.27.\n"
+            "Если точной даты нет, можно оставить поле пустым и нажать «Вперёд»."
+        )
+
+def empty_field_warning_text(lang: str) -> str:
+    if lang == "en":
+        return (
+            "This field is currently empty. Missing data can reduce the quality of the database.\n"
+            "Do you want to leave the field empty and continue?"
+        )
+    else:
+        return (
+            "Это поле сейчас пустое. Незаполненные данные могут снизить качество базы.\n"
+            "Вы хотите оставить поле пустым и продолжить?"
+        )
+
+
+def cancel_confirm_text(lang: str) -> str:
+    if lang == "en":
+        return "Do you really want to cancel and go to the dog menu?"
+    else:
+        return "Вы действительно хотите отменить заполнение и выйти в меню собак?"
+
+
+def dog_name_required_text(lang: str) -> str:
+    if lang == "en":
+        return "Dog name is required. Please enter the name to continue."
+    else:
+        return "Кличка собаки обязательна. Укажите кличку, чтобы продолжить."
+
+
+def date_format_error_text(lang: str) -> str:
+    if lang == "en":
+        return (
+            "Enter the date in the format YYYY.MM.DD,\n"
+            "for example: 2021.03.27"
+        )
+    else:
+        return (
+            "Введите дату рождения в формате ГГГГ.ММ.ДД,\n"
+            "например: 2021.03.27"
+        )
+
+
+def url_error_text(lang: str) -> str:
+    if lang == "en":
+        return "The link must be from canecorsopedigree.com"
+    else:
+        return "Ссылка должна быть с сайта canecorsopedigree.com"
+
+
+def insufficient_data_text(lang: str) -> str:
+    if lang == "en":
+        return (
+            "There is not enough data to save this record.\n\n"
+            "To save, you need:\n"
+            "• dog name, and\n"
+            "• either at least one pedigree link (dog or parents),\n"
+            "• or both dam and sire names if there are no links."
+        )
+    else:
+        return (
+            "Сейчас данных недостаточно для сохранения записи.\n\n"
+            "Для сохранения записи нужно:\n"
+            "• указать кличку собаки, и\n"
+            "• либо хотя бы одну ссылку на родословную (собаки или родителей),\n"
+            "• либо кличку матери и кличку отца, если ссылок нет."
+        )
+
 
 # --- Database helper functions ---
 
-
 def save_case(
     user_id: int,
-    dog: str,
-    dam: str,
-    sire: str,
-    sex: str = None,
-    birth_date: str = None,
+    dog_name: str,
+    dog_pedigree_url: str,
+    dam_name: str,
+    dam_pedigree_url: str,
+    sire_name: str,
+    sire_pedigree_url: str,
+    sex: str,
+    birth_date: str,
 ):
-    """Сохраняет базовые данные по собаке в SQLite."""
+    """Сохраняет данные по собаке в SQLite."""
     with engine.connect() as connection:
         connection.execute(
             text(
                 """
                 INSERT INTO cases (
-                    user_id, dog_name, dam_name, sire_name, sex, birth_date, timestamp
+                    user_id,
+                    dog_name,
+                    dog_pedigree_url,
+                    dam_name,
+                    dam_pedigree_url,
+                    sire_name,
+                    sire_pedigree_url,
+                    sex,
+                    birth_date,
+                    timestamp
                 )
-                VALUES (:uid, :dog, :dam, :sire, :sex, :birth_date, datetime('now'))
+                VALUES (
+                    :uid,
+                    :dog_name,
+                    :dog_pedigree_url,
+                    :dam_name,
+                    :dam_pedigree_url,
+                    :sire_name,
+                    :sire_pedigree_url,
+                    :sex,
+                    :birth_date,
+                    datetime('now')
+                )
                 """
             ),
             {
                 "uid": user_id,
-                "dog": dog,
-                "dam": dam,
-                "sire": sire,
+                "dog_name": dog_name,
+                "dog_pedigree_url": dog_pedigree_url,
+                "dam_name": dam_name,
+                "dam_pedigree_url": dam_pedigree_url,
+                "sire_name": sire_name,
+                "sire_pedigree_url": sire_pedigree_url,
                 "sex": sex,
                 "birth_date": birth_date,
             },
         )
         connection.commit()
-    logging.info(f"Saved case for user={user_id}, dog='{dog}'")
+    logging.info(f"Saved case for user={user_id}, dog='{dog_name}'")
+
 
 
 def delete_case_by_dog_name(name: str):
@@ -466,6 +905,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
