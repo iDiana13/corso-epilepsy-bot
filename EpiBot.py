@@ -791,14 +791,19 @@ async def handle_add_case_next(query: types.CallbackQuery, uid: int):
     state = user_add_case_state.get(uid)
     data = user_add_case_data.setdefault(uid, {})
 
-    # Кличка собаки обязательна
+    # 1. Кличка собаки обязательна
     if state == ADD_STATE_DOG:
         if not (data.get("dog_name") or "").strip():
             await query.answer()
             await query.message.reply_text(dog_name_required_text(lang))
             return
 
-    # Проверка пустого поля для остальных шагов
+    # 2. Если это шаг даты рождения - сразу пробуем сохранить / показать ошибку
+    if state == ADD_STATE_BIRTH:
+        await go_next_step_or_save(query, uid)
+        return
+
+    # 3. Для остальных шагов проверяем, пустой ли блок, и при необходимости спрашиваем подтверждение
     empty_field = None
 
     if state == ADD_STATE_DAM:
@@ -810,11 +815,8 @@ async def handle_add_case_next(query: types.CallbackQuery, uid: int):
     elif state == ADD_STATE_SEX:
         if not (data.get("sex") or "").strip():
             empty_field = "sex"
-    elif state == ADD_STATE_BIRTH:
-        if not (data.get("birth_date") or "").strip():
-            empty_field = "birth_date"
 
-    if empty_field and state != ADD_STATE_DOG:
+    if empty_field:
         user_add_case_substate[uid] = ADD_SUBSTATE_EMPTY_CONFIRM
         user_add_case_empty_field[uid] = empty_field
         await query.answer()
@@ -824,12 +826,7 @@ async def handle_add_case_next(query: types.CallbackQuery, uid: int):
         )
         return
 
-    # Если это последний шаг, пробуем сохранить
-    if state == ADD_STATE_BIRTH:
-        await go_next_step_or_save(query, uid)
-        return
-
-    # Иначе просто двигаем состояние
+    # 4. Просто перейти на следующий шаг, если не дата и не пустой блок
     if state == ADD_STATE_DOG:
         user_add_case_state[uid] = ADD_STATE_DAM
     elif state == ADD_STATE_DAM:
@@ -841,6 +838,7 @@ async def handle_add_case_next(query: types.CallbackQuery, uid: int):
 
     await query.answer()
     await repaint_current_step(query, uid)
+
 
 
 async def go_next_step_or_save(query: types.CallbackQuery, uid: int):
@@ -1047,6 +1045,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
