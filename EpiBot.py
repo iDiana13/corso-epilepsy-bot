@@ -847,7 +847,242 @@ async def admin_delete_case(message: types.Message):
 
     await message.answer(f"✔ Запись с именем '{dog_name}' удалена (если она существовала).")
 
+async def repaint_current_step(query: types.CallbackQuery, uid: int):
+    lang = get_user_lang(uid)
+    state = user_add_case_state.get(uid)
+
+    if state == ADD_STATE_DOG:
+        await query.message.edit_text(
+            dog_step_intro(lang),
+            reply_markup=add_case_inline_nav(lang),
+        )
+    elif state == ADD_STATE_DAM:
+        await query.message.edit_text(
+            dam_step_intro(lang),
+            reply_markup=add_case_inline_nav(lang),
+        )
+    elif state == ADD_STATE_SIRE:
+        await query.message.edit_text(
+            sire_step_intro(lang),
+            reply_markup=add_case_inline_nav(lang),
+        )
+    elif state == ADD_STATE_SEX:
+        await query.message.edit_text(
+            sex_step_intro(lang),
+            reply_markup=add_case_inline_nav_with_sex(lang),
+        )
+    elif state == ADD_STATE_BIRTH:
+        await query.message.edit_text(
+            birth_step_intro(lang),
+            reply_markup=add_case_inline_nav(lang),
+        )
+
+
+async def handle_add_case_back(query: types.CallbackQuery, uid: int):
+    state = user_add_case_state.get(uid)
+
+    if state == ADD_STATE_DOG:
+        await send_dogs_menu_from_query(query, uid)
+        return
+
+    if state == ADD_STATE_DAM:
+        user_add_case_state[uid] = ADD_STATE_DOG
+    elif state == ADD_STATE_SIRE:
+        user_add_case_state[uid] = ADD_STATE_DAM
+    elif state == ADD_STATE_SEX:
+        user_add_case_state[uid] = ADD_STATE_SIRE
+    elif state == ADD_STATE_BIRTH:
+        user_add_case_state[uid] = ADD_STATE_SEX
+
+    await query.answer()
+    await repaint_current_step(query, uid)
+
+
+async def handle_add_case_next(query: types.CallbackQuery, uid: int):
+    lang = get_user_lang(uid)
+    state = user_add_case_state.get(uid)
+    data = user_add_case_data.setdefault(uid, {})
+
+    # Кличка собаки обязательна
+    if state == ADD_STATE_DOG:
+        if not (data.get("dog_name") or "").strip():
+            await query.answer()
+            await query.message.reply_text(dog_name_required_text(lang))
+            return
+
+    # Проверка пустого поля для остальных шагов
+    empty_field = None
+
+    if state == ADD_STATE_DAM:
+        if not (data.get("dam_name") or "").strip() and not (data.get("dam_pedigree_url") or "").strip():
+            empty_field = "dam"
+    elif state == ADD_STATE_SIRE:
+        if not (data.get("sire_name") or "").strip() and not (data.get("sire_pedigree_url") or "").strip():
+            empty_field = "sire"
+    elif state == ADD_STATE_SEX:
+        if not (data.get("sex") or "").strip():
+            empty_field = "sex"
+    elif state == ADD_STATE_BIRTH:
+        if not (data.get("birth_date") or "").strip():
+            empty_field = "birth_date"
+
+    if empty_field and state != ADD_STATE_DOG:
+        user_add_case_substate[uid] = ADD_SUBSTATE_EMPTY_CONFIRM
+        user_add_case_empty_field[uid] = empty_field
+        await query.answer()
+        await query.message.edit_text(
+            empty_field_warning_text(lang),
+            reply_markup=empty_field_confirm_keyboard(lang),
+        )
+        return
+
+    # Если это последний шаг, пробуем сохранить
+    if state == ADD_STATE_BIRTH:
+        await go_next_step_or_save(query, uid)
+        return
+
+    # Иначе просто двигаем состояние
+    if state == ADD_STATE_DOG:
+        user_add_case_state[uid] = ADD_STATE_DAM
+    elif state == ADD_STATE_DAM:
+        user_add_case_state[uid] = ADD_STATE_SIRE
+    elif state == ADD_STATE_SIRE:
+        user_add_case_state[uid] = ADD_STATE_SEX
+    elif state == ADD_STATE_SEX:
+        user_add_case_state[uid] = ADD_STATE_BIRTH
+
+    await query.answer()
+    await repaint_current_step(query, uid)
+
+
+async def go_next_step_or_save(query: types.CallbackQuery, uid: int):
+    lang = get_user_lang(uid)
+    state = user_add_case_state.get(uid)
+    data = user_add_case_data.setdefault(uid, {})
+
+    # Сохраняем только на последнем шаге
+    if state != ADD_STATE_BIRTH:
+        if state == ADD_STATE_DOG:
+            user_add_case_state[uid] = ADD_STATE_DAM
+        elif state == ADD_STATE_DAM:
+            user_add_case_state[uid] = ADD_STATE_SIRE
+        elif state == ADD_STATE_SIRE:
+            user_add_case_state[uid] = ADD_STATE_SEX
+        elif state == ADD_STATE_SEX:
+            user_add_case_state[uid] = ADD_STATE_BIRTH
+
+        await query.answer()
+        await repaint_current_step(query, uid)
+        return
+
+    # Это последний шаг, проверяем минимальные условия
+    if not is_case_minimal_ok(data):
+        await query.answer()
+        await query.message.reply_text(insufficient_data_text(lang))
+        return
+
+    # Сохраняем
+    save_case(
+        user_id=uid,
+        dog_name=(data.get("dog_name") or "").strip(),
+        dog_pedigree_url=(data.get("dog_pedigree_url") or "").strip(),
+        dam_name=(data.get("dam_name") or "").strip(),
+        dam_pedigree_url=(data.get("dam_pedigree_url") or "").strip(),
+        sire_name=(data.get("sire_name") or "").strip(),
+        sire_pedigree_url=(data.get("sire_pedigree_url") or "").strip(),
+        sex=(data.get("sex") or "").strip(),
+        birth_date=(data.get("birth_date") or "").strip(),
+    )
+
+    # Чистим состояние
+    user_add_case_state.pop(uid, None)
+    user_add_case_data.pop(uid, None)
+    user_add_case_substate.pop(uid, None)
+    user_add_case_empty_field.pop(uid, None)
+
+    if lang == "en":
+        saved_text = "Form saved. The record has been added to the database."
+    else:
+        saved_text = "Анкета сохранена. Запись добавлена в базу."
+
+    await query.answer()
+    await query.message.reply_text(saved_text)
+    await send_dogs_menu_from_query(query, uid)
+
     
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith("add_"))
+async def handle_add_case_callback(query: types.CallbackQuery):
+    uid = query.from_user.id
+    lang = get_user_lang(uid)
+    data_str = query.data
+    state = user_add_case_state.get(uid)
+    data = user_add_case_data.setdefault(uid, {})
+    substate = user_add_case_substate.get(uid)
+
+    # Выбор пола
+    if data_str in (CB_ADD_SEX_MALE, CB_ADD_SEX_FEMALE):
+        if lang == "en":
+            male_value = "Male"
+            female_value = "Female"
+            chosen_text = "Sex: Male." if data_str == CB_ADD_SEX_MALE else "Sex: Female."
+        else:
+            male_value = "Кобель"
+            female_value = "Сука"
+            chosen_text = "Пол: Кобель." if data_str == CB_ADD_SEX_MALE else "Пол: Сука."
+
+        data["sex"] = male_value if data_str == CB_ADD_SEX_MALE else female_value
+        user_add_case_data[uid] = data
+
+        await query.answer()
+        await query.message.edit_text(
+            sex_step_intro(lang) + "\n\n" + chosen_text,
+            reply_markup=add_case_inline_nav_with_sex(lang),
+        )
+        return
+
+    # Отмена анкеты
+    if data_str == CB_ADD_CANCEL:
+        await query.answer()
+        await query.message.edit_text(
+            cancel_confirm_text(lang),
+            reply_markup=cancel_confirm_keyboard(lang),
+        )
+        return
+
+    if data_str == CB_ADD_CANCEL_YES:
+        await send_dogs_menu_from_query(query, uid)
+        return
+
+    if data_str == CB_ADD_CANCEL_NO:
+        await query.answer()
+        await repaint_current_step(query, uid)
+        return
+
+    # Подтверждение пустого поля
+    if data_str == CB_ADD_EMPTY_YES:
+        user_add_case_substate[uid] = None
+        field_name = user_add_case_empty_field.get(uid)
+        user_add_case_empty_field[uid] = None
+
+        # Двигаемся дальше, либо сохраняем
+        await go_next_step_or_save(query, uid)
+        return
+
+    if data_str == CB_ADD_EMPTY_NO:
+        user_add_case_substate[uid] = None
+        user_add_case_empty_field[uid] = None
+        await repaint_current_step(query, uid)
+        return
+
+    # Навигация Назад
+    if data_str == CB_ADD_BACK:
+        await handle_add_case_back(query, uid)
+        return
+
+    # Навигация Вперёд
+    if data_str == CB_ADD_NEXT:
+        await handle_add_case_next(query, uid)
+        return
 
 
 
@@ -924,6 +1159,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
