@@ -20,7 +20,9 @@ LOCKFILE = "/tmp/epibot.lock"
 
 # --- In-memory language storage (per process only) ---
 
-user_lang = {}
+user_lang = {}          # язык пользователя
+user_add_case_state = {}  # состояние пошагового ввода истории: dog_name / dam_name / sire_name
+user_add_case_data = {}   # временные данные по собакам
 
 # --- Logging ---
 
@@ -54,7 +56,13 @@ def main_menu_markup(lang: str = "ru") -> types.ReplyKeyboardMarkup:
         kb.row("📄 Помощь", "📂 Добавить историю")
     return kb
 
-
+def add_case_nav_keyboard(lang: str = "ru") -> types.ReplyKeyboardMarkup:
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    if lang == "en":
+        kb.row("Back to bot menu", "I continue")
+    else:
+        kb.row("Назад в меню бота", "Продолжаю")
+    return kb
 
 
 # --- Main welcome texts ---
@@ -151,11 +159,8 @@ async def handle_add_case_with_consent(message: types.Message):
             "• разрешаете её хранение и обработку в рамках проекта по эпилепсии у Cane Corso\n"
             "• понимаете, что данные могут использоваться в обезличенном виде для анализа и статистики\n"
             "• не отправляете персональные данные третьих лиц без их согласия\n\n"
-            "Если вы согласны, введите латинскими буквами:\n"
-            "1. Полную кличку собаки, точно так как она указана в родословной.\n"
-            "2. Имя мамы, латиницей, точно так как оно указано в родословной.\n"
-            "3. Имя папы, латиницей, точно так как оно указано в родословной.\n"
-            "Если не согласны, просто не отправляйте данные и вернитесь в меню."
+            "Если вы согласны, нажмите «Продолжаю».\n"
+            "Если не согласны, нажмите «Назад в меню бота» или просто не отправляйте данные."
         )
     else:
         text = (
@@ -165,15 +170,133 @@ async def handle_add_case_with_consent(message: types.Message):
             "• you allow it to be stored and processed within the Cane Corso epilepsy project\n"
             "• the data may be used in anonymized form for analysis and statistics\n"
             "• you will not send personal data of third parties without their consent\n\n"
-            "If you agree, please enter in Latin letters:\n"
-            "1. The dog's full registered name exactly as written in the pedigree.\n"
-            "2. The dam's name (mother) exactly as written in the pedigree.\n"
-            "3. The sire's name (father) exactly as written in the pedigree.\n"
-            "If you do not agree, simply do not send any data and return to the menu."
+            "If you agree, press “I continue”.\n"
+            "If you do not agree, press “Back to bot menu” or simply do not send any data."
+        )
+
+    await message.answer(text, reply_markup=add_case_nav_keyboard(lang))
+
+
+# --- Add case step-by-step input (dog, dam, sire) ---
+
+# user_add_case_state[uid] = "dog_name" | "dam_name" | "sire_name"
+
+
+@dp.message_handler(lambda m: m.text in ["Назад в меню бота", "Back to bot menu"])
+async def handle_back_to_bot_menu(message: types.Message):
+    uid = message.from_user.id
+    lang = user_lang.get(uid, "ru")
+
+    # сбрасываем состояние ввода
+    user_add_case_state.pop(uid, None)
+    user_add_case_data.pop(uid, None)
+
+    if lang == "en":
+        await message.answer(
+            get_welcome_text("en"),
+            reply_markup=main_menu_markup("en"),
+        )
+    else:
+        await message.answer(
+            get_welcome_text("ru"),
+            reply_markup=main_menu_markup("ru"),
+        )
+
+
+@dp.message_handler(lambda m: m.text in ["Продолжаю", "I continue"])
+async def handle_add_case_start_steps(message: types.Message):
+    uid = message.from_user.id
+    lang = user_lang.get(uid, "ru")
+
+    user_add_case_state[uid] = "dog_name"
+    user_add_case_data[uid] = {}
+
+    if lang == "en":
+        text = (
+            "Please enter the dog's full registered name in Latin letters "
+            "exactly as written in the pedigree."
+        )
+    else:
+        text = (
+            "Пожалуйста, введите полную кличку собаки латиницей, "
+            "точно так как она указана в родословной."
         )
 
     await message.answer(text)
 
+
+@dp.message_handler(lambda m: user_add_case_state.get(m.from_user.id) == "dog_name")
+async def handle_add_case_dog_name(message: types.Message):
+    uid = message.from_user.id
+    lang = user_lang.get(uid, "ru")
+
+    user_add_case_data.setdefault(uid, {})["dog_name"] = message.text.strip()
+    user_add_case_state[uid] = "dam_name"
+
+    if lang == "en":
+        text = (
+            "Enter the dam's name (mother) in Latin letters "
+            "exactly as written in the pedigree."
+        )
+    else:
+        text = (
+            "Введите имя мамы латиницей, "
+            "точно так как оно указано в родословной."
+        )
+
+    await message.answer(text)
+
+
+@dp.message_handler(lambda m: user_add_case_state.get(m.from_user.id) == "dam_name")
+async def handle_add_case_dam_name(message: types.Message):
+    uid = message.from_user.id
+    lang = user_lang.get(uid, "ru")
+
+    user_add_case_data.setdefault(uid, {})["dam_name"] = message.text.strip()
+    user_add_case_state[uid] = "sire_name"
+
+    if lang == "en":
+        text = (
+            "Enter the sire's name (father) in Latin letters "
+            "exactly as written in the pedigree."
+        )
+    else:
+        text = (
+            "Введите имя папы латиницей, "
+            "точно так как оно указано в родословной."
+        )
+
+    await message.answer(text)
+
+
+@dp.message_handler(lambda m: user_add_case_state.get(m.from_user.id) == "sire_name")
+async def handle_add_case_sire_name(message: types.Message):
+    uid = message.from_user.id
+    lang = user_lang.get(uid, "ru")
+
+    user_add_case_data.setdefault(uid, {})["sire_name"] = message.text.strip()
+
+    data = user_add_case_data.get(uid, {}).copy()
+    logging.info(f"Add case basic pedigree data from {uid}: {data}")
+
+    # очищаем состояние
+    user_add_case_state.pop(uid, None)
+    user_add_case_data.pop(uid, None)
+
+    if lang == "en":
+        text = (
+            "Thank you. The basic pedigree data has been recorded.\n"
+            "Later we will ask for more details about the case."
+        )
+        markup = main_menu_markup("en")
+    else:
+        text = (
+            "Спасибо. Основные данные по родословной сохранены.\n"
+            "Позже бот попросит у вас дополнительные детали по случаю."
+        )
+        markup = main_menu_markup("ru")
+
+    await message.answer(text, reply_markup=markup)
 
 
 
@@ -254,6 +377,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
