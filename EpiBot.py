@@ -47,102 +47,6 @@ user_add_case_data = {}    # временные данные по собакам
 user_add_case_substate = {}      # подстатус, например подтверждение пустого поля
 user_add_case_empty_field = {}   # какое поле сейчас подтверждаем как пустое
 
-def dogs_menu_text(lang: str = "ru") -> str:
-    if lang == "en":
-        return (
-            "Dog menu.\n"
-            "Later here will be:\n"
-            "• Add dog\n"
-            "• Find dog"
-        )
-    else:
-        return (
-            "Меню работы с собаками.\n"
-            "Позже здесь будут:\n"
-            "• Добавить собаку\n"
-            "• Найти собаку"
-        )
-
-
-def add_case_inline_nav(lang: str = "ru") -> types.InlineKeyboardMarkup:
-    if lang == "en":
-        back_text = "Back"
-        cancel_text = "Cancel"
-        next_text = "Next"
-    else:
-        back_text = "Назад"
-        cancel_text = "Отмена"
-        next_text = "Вперёд"
-
-    kb = types.InlineKeyboardMarkup()
-    kb.add(
-        types.InlineKeyboardButton(back_text, callback_data=CB_ADD_BACK),
-        types.InlineKeyboardButton(cancel_text, callback_data=CB_ADD_CANCEL),
-        types.InlineKeyboardButton(next_text, callback_data=CB_ADD_NEXT),
-    )
-    return kb
-
-
-def add_case_inline_nav_with_sex(lang: str = "ru") -> types.InlineKeyboardMarkup:
-    if lang == "en":
-        back_text = "Back"
-        cancel_text = "Cancel"
-        next_text = "Next"
-        male_text = "Male"
-        female_text = "Female"
-    else:
-        back_text = "Назад"
-        cancel_text = "Отмена"
-        next_text = "Вперёд"
-        male_text = "Кобель"
-        female_text = "Сука"
-
-    kb = types.InlineKeyboardMarkup()
-    kb.row(
-        types.InlineKeyboardButton(back_text, callback_data=CB_ADD_BACK),
-        types.InlineKeyboardButton(cancel_text, callback_data=CB_ADD_CANCEL),
-        types.InlineKeyboardButton(next_text, callback_data=CB_ADD_NEXT),
-    )
-    kb.row(
-        types.InlineKeyboardButton(male_text, callback_data=CB_ADD_SEX_MALE),
-        types.InlineKeyboardButton(female_text, callback_data=CB_ADD_SEX_FEMALE),
-    )
-    return kb
-
-
-def empty_field_confirm_keyboard(lang: str = "ru") -> types.InlineKeyboardMarkup:
-    if lang == "en":
-        yes_text = "Yes, leave empty"
-        no_text = "No, go back"
-    else:
-        yes_text = "Да, оставить пустым"
-        no_text = "Нет, вернуться к вводу"
-
-    kb = types.InlineKeyboardMarkup()
-    kb.add(
-        types.InlineKeyboardButton(yes_text, callback_data=CB_ADD_EMPTY_YES),
-        types.InlineKeyboardButton(no_text, callback_data=CB_ADD_EMPTY_NO),
-    )
-    return kb
-
-
-def cancel_confirm_keyboard(lang: str = "ru") -> types.InlineKeyboardMarkup:
-    if lang == "en":
-        yes_text = "Yes"
-        no_text = "No"
-    else:
-        yes_text = "Да"
-        no_text = "Нет"
-
-    kb = types.InlineKeyboardMarkup()
-    kb.add(
-           kb.add(
-        types.InlineKeyboardButton(yes_text, callback_data=CB_ADD_CANCEL_YES),
-        types.InlineKeyboardButton(no_text, callback_data=CB_ADD_CANCEL_NO),
-    )
-
-    return kb
-
 
 # --- FSM for add case ---
 
@@ -749,28 +653,6 @@ async def handle_add_case_start_steps(message: types.Message):
     )
 
 
-
-
-
-    # --- Очищаем временные данные ---
-    user_add_case_state.pop(uid, None)
-    user_add_case_data.pop(uid, None)
-
-    if lang == "en":
-        text = (
-            "Thank you. The basic pedigree data has been recorded.\n"
-            "Later we will ask for more details about the case."
-        )
-        markup = main_menu_markup("en")
-    else:
-        text = (
-            "Спасибо. Основные данные по родословной сохранены.\n"
-            "Позже бот попросит у вас дополнительные детали по случаю."
-        )
-        markup = main_menu_markup("ru")
-
-    await message.answer(text, reply_markup=markup)
-
 @dp.message_handler(lambda m: user_add_case_state.get(m.from_user.id) is not None)
 async def handle_add_case_message(message: types.Message):
     uid = message.from_user.id
@@ -1159,6 +1041,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
