@@ -7,6 +7,9 @@ import time
 import logging
 from aiogram import Bot, Dispatcher, executor, types
 
+# --- Admin users who can use /delete ---
+ADMINS = {5059876030}   # ← твой Telegram user_id
+
 # --- Token ---
 
 API_TOKEN = os.getenv("EPIBOT_TOKEN")
@@ -23,6 +26,20 @@ LOCKFILE = "/tmp/epibot.lock"
 user_lang = {}          # язык пользователя
 user_add_case_state = {}  # состояние пошагового ввода истории: dog_name / dam_name / sire_name
 user_add_case_data = {}   # временные данные по собакам
+
+def delete_case_by_dog_name(name: str):
+    """Удаляет запись из базы по имени собаки."""
+    try:
+        with engine.connect() as connection:
+            connection.execute(
+                sqlalchemy.text("DELETE FROM cases WHERE dog_name = :name"),
+                {"name": name}
+            )
+            connection.commit()
+        logging.info(f"Deleted case with dog_name='{name}'")
+    except Exception as e:
+        logging.error(f"Error deleting case '{name}': {e}")
+
 
 # --- Logging ---
 
@@ -299,6 +316,25 @@ async def handle_add_case_sire_name(message: types.Message):
     await message.answer(text, reply_markup=markup)
 
 
+@dp.message_handler(commands=["delete"])
+async def admin_delete_case(message: types.Message):
+    uid = message.from_user.id
+
+    if uid not in ADMINS:
+        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
+        return
+
+    parts = message.text.split(maxsplit=1)
+
+    if len(parts) < 2:
+        await message.answer("Укажите имя собаки. Пример:\n/delete Bella")
+        return
+
+    dog_name = parts[1].strip()
+
+    delete_case_by_dog_name(dog_name)
+
+    await message.answer(f"✔ Запись с именем '{dog_name}' удалена (если она существовала).")
 
     
 
@@ -377,6 +413,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
