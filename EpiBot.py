@@ -341,7 +341,15 @@ async def handle_add_case_sire_name(message: types.Message):
     data = user_add_case_data.get(uid, {}).copy()
     logging.info(f"Add case basic pedigree data from {uid}: {data}")
 
-    # очищаем состояние
+    # --- Сохраняем в базу ---
+    save_case(
+        user_id=uid,
+        dog=data.get("dog_name"),
+        dam=data.get("dam_name"),
+        sire=data.get("sire_name"),
+    )
+
+    # --- Очищаем временные данные ---
     user_add_case_state.pop(uid, None)
     user_add_case_data.pop(uid, None)
 
@@ -458,6 +466,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
