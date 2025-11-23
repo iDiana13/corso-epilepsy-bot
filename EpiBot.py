@@ -81,6 +81,8 @@ CB_ADD_EMPTY_NO = "add_empty_no"
 CB_ADD_SEX_MALE = "add_sex_male"
 CB_ADD_SEX_FEMALE = "add_sex_female"
 
+CB_ADD_CONFIRM_SAVE = "add_confirm_save"
+
 def dogs_menu_text(lang: str = "ru") -> str:
     if lang == "en":
         return (
@@ -131,6 +133,8 @@ def add_case_inline_nav_with_sex(lang: str = "ru") -> types.InlineKeyboardMarkup
         male_text = "Кобель"
         female_text = "Сука"
 
+    
+
     kb = types.InlineKeyboardMarkup()
     kb.row(
         types.InlineKeyboardButton(back_text, callback_data=CB_ADD_BACK),
@@ -140,6 +144,24 @@ def add_case_inline_nav_with_sex(lang: str = "ru") -> types.InlineKeyboardMarkup
     kb.row(
         types.InlineKeyboardButton(male_text, callback_data=CB_ADD_SEX_MALE),
         types.InlineKeyboardButton(female_text, callback_data=CB_ADD_SEX_FEMALE),
+    )
+    return kb
+
+def add_case_inline_nav_confirm(lang: str = "ru") -> types.InlineKeyboardMarkup:
+    if lang == "en":
+        back_text = "Back"
+        cancel_text = "Cancel"
+        save_text = "Save"
+    else:
+        back_text = "Назад"
+        cancel_text = "Отмена"
+        save_text = "Сохранить"
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton(back_text, callback_data=CB_ADD_BACK),
+        types.InlineKeyboardButton(cancel_text, callback_data=CB_ADD_CANCEL),
+        types.InlineKeyboardButton(save_text, callback_data=CB_ADD_CONFIRM_SAVE),
     )
     return kb
 
@@ -299,6 +321,55 @@ def birth_step_intro(lang: str) -> str:
             "Введите дату рождения в формате ГГГГ.ММ.ДД, например: 2021.03.27.\n"
             "Если точной даты нет, можно оставить поле пустым и нажать «Вперёд»."
         )
+
+
+def build_confirm_text(lang: str, data: dict) -> str:
+    def val(v, default_ru: str, default_en: str) -> str:
+        if not v or not str(v).strip():
+            return default_ru if lang == "ru" else default_en
+        return str(v).strip()
+
+    dog_name = val(data.get("dog_name"), "не указано", "not specified")
+    dam_name = val(data.get("dam_name"), "не указано", "not specified")
+    sire_name = val(data.get("sire_name"), "не указано", "not specified")
+    sex = val(data.get("sex"), "не указан", "not specified")
+    birth_date = val(data.get("birth_date"), "не указана", "not specified")
+
+    dog_url = val(data.get("dog_pedigree_url"), "нет", "none")
+    dam_url = val(data.get("dam_pedigree_url"), "нет", "none")
+    sire_url = val(data.get("sire_pedigree_url"), "нет", "none")
+
+    if lang == "en":
+        lines = [
+            "Check the data before saving:",
+            "",
+            f"1. Dog: {dog_name}",
+            f"2. Dam: {dam_name}",
+            f"3. Sire: {sire_name}",
+            f"4. Sex: {sex}",
+            f"5. Birth date: {birth_date}",
+            "6. Pedigree links:",
+            f"   • Dog: {dog_url}",
+            f"   • Dam: {dam_url}",
+            f"   • Sire: {sire_url}",
+        ]
+    else:
+        lines = [
+            "Проверим данные перед сохранением:",
+            "",
+            f"1. Собака: {dog_name}",
+            f"2. Мать: {dam_name}",
+            f"3. Отец: {sire_name}",
+            f"4. Пол: {sex}",
+            f"5. Дата рождения: {birth_date}",
+            "6. Ссылки:",
+            f"   • Собака: {dog_url}",
+            f"   • Мать: {dam_url}",
+            f"   • Отец: {sire_url}",
+        ]
+
+    return "\n".join(lines)
+
 
 def empty_field_warning_text(lang: str) -> str:
     if lang == "en":
@@ -498,6 +569,14 @@ def add_case_nav_keyboard(lang: str = "ru") -> types.ReplyKeyboardMarkup:
         kb.row("Назад в меню бота", "Продолжаю")
     return kb
 
+def add_case_back_only_keyboard(lang: str = "ru") -> types.ReplyKeyboardMarkup:
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    if lang == "en":
+        kb.row("Back to bot menu")
+    else:
+        kb.row("Назад в меню бота")
+    return kb
+
 
 # --- Main welcome texts ---
 
@@ -621,9 +700,13 @@ async def handle_back_to_bot_menu(message: types.Message):
     uid = message.from_user.id
     lang = user_lang.get(uid, "ru")
 
-    # сбрасываем состояние ввода
+    # reset add case and search state
     user_add_case_state.pop(uid, None)
     user_add_case_data.pop(uid, None)
+    user_add_case_substate.pop(uid, None)
+    user_add_case_empty_field.pop(uid, None)
+    user_search_state.pop(uid, None)
+    user_search_results.pop(uid, None)
 
     if lang == "en":
         await message.answer(
@@ -642,6 +725,10 @@ async def handle_add_case_start_steps(message: types.Message):
     uid = message.from_user.id
     lang = get_user_lang(uid)
 
+    # do not restart form if it is already in progress
+    if user_add_case_state.get(uid) is not None:
+        return
+
     user_add_case_state[uid] = ADD_STATE_DOG
     user_add_case_substate[uid] = None
     user_add_case_empty_field[uid] = None
@@ -656,10 +743,18 @@ async def handle_add_case_start_steps(message: types.Message):
         "birth_date": "",
     }
 
+    # set reply keyboard to single "Back to bot menu" button
+    await message.answer(
+        " ",
+        reply_markup=add_case_back_only_keyboard(lang),
+    )
+
+    # send first step with inline navigation
     await message.answer(
         dog_step_intro(lang),
         reply_markup=add_case_inline_nav(lang),
     )
+
 
 
 @dp.message_handler(lambda m: user_add_case_state.get(m.from_user.id) is not None)
@@ -741,7 +836,9 @@ async def admin_delete_case(message: types.Message):
 async def repaint_current_step(query: types.CallbackQuery, uid: int):
     lang = get_user_lang(uid)
     state = user_add_case_state.get(uid)
+    data = user_add_case_data.setdefault(uid, {})
 
+    # Common cases: steps 1 4
     if state == ADD_STATE_DOG:
         await query.message.edit_text(
             dog_step_intro(lang),
@@ -767,6 +864,19 @@ async def repaint_current_step(query: types.CallbackQuery, uid: int):
             birth_step_intro(lang),
             reply_markup=add_case_inline_nav(lang),
         )
+    elif state == ADD_STATE_CONFIRM:
+        # Confirmation step
+        await query.message.edit_text(
+            build_confirm_text(lang, data),
+            reply_markup=add_case_inline_nav_confirm(lang),
+        )
+    else:
+        # Fallback to first step
+        await query.message.edit_text(
+            dog_step_intro(lang),
+            reply_markup=add_case_inline_nav(lang),
+        )
+
 
 
 async def handle_add_case_back(query: types.CallbackQuery, uid: int):
@@ -1048,6 +1158,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
