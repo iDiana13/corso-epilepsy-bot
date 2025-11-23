@@ -51,6 +51,8 @@ user_add_case_state = {}   # состояние анкеты по собаке
 user_add_case_data = {}    # временные данные по собакам
 user_add_case_substate = {}      # подстатус, например подтверждение пустого поля
 user_add_case_empty_field = {}   # какое поле сейчас подтверждаем как пустое
+user_search_state = {}        # uid -> "dog_name" or None
+user_search_results = {}      # uid -> list of last search results
 
 
 # --- FSM for add case ---
@@ -62,6 +64,7 @@ ADD_STATE_SEX = "sex"
 ADD_STATE_BIRTH = "birth_date"
 
 ADD_SUBSTATE_EMPTY_CONFIRM = "empty_confirm"
+ADD_STATE_CONFIRM = "confirm"
 
 PEDIGREE_PREFIX = "https://canecorsopedigree.com/"
 
@@ -1045,6 +1048,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
