@@ -1193,8 +1193,6 @@ async def handle_add_case_next(query: types.CallbackQuery, uid: int):
     await query.answer()
     await repaint_current_step(query, uid)
 
-
-
 async def go_next_step_or_save(query: types.CallbackQuery, uid: int):
     lang = get_user_lang(uid)
     state = user_add_case_state.get(uid)
@@ -1209,9 +1207,10 @@ async def go_next_step_or_save(query: types.CallbackQuery, uid: int):
     elif state == ADD_STATE_SEX:
         user_add_case_state[uid] = ADD_STATE_BIRTH
     elif state == ADD_STATE_BIRTH:
-        # вместо сохранения переходим на шаг подтверждения
+        # go to confirm step instead of saving immediately
         user_add_case_state[uid] = ADD_STATE_CONFIRM
     elif state == ADD_STATE_CONFIRM:
+        # nothing more to do here
         await query.answer()
         return
 
@@ -1219,13 +1218,17 @@ async def go_next_step_or_save(query: types.CallbackQuery, uid: int):
     await repaint_current_step(query, uid)
 
 
-    # Это последний шаг, проверяем минимальные условия
+async def handle_add_case_confirm_save(query: types.CallbackQuery, uid: int):
+    lang = get_user_lang(uid)
+    data = user_add_case_data.setdefault(uid, {})
+
+    # final validation
     if not is_case_minimal_ok(data):
         await query.answer()
         await query.message.reply_text(insufficient_data_text(lang))
         return
 
-    # Сохраняем
+    # save to DB
     save_case(
         user_id=uid,
         dog_name=(data.get("dog_name") or "").strip(),
@@ -1238,7 +1241,7 @@ async def go_next_step_or_save(query: types.CallbackQuery, uid: int):
         birth_date=(data.get("birth_date") or "").strip(),
     )
 
-    # Чистим состояние
+    # clear state
     user_add_case_state.pop(uid, None)
     user_add_case_data.pop(uid, None)
     user_add_case_substate.pop(uid, None)
@@ -1253,16 +1256,15 @@ async def go_next_step_or_save(query: types.CallbackQuery, uid: int):
     await query.message.reply_text(saved_text)
     await send_dogs_menu_from_query(query, uid)
 
+
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith("add_"))
 async def handle_add_case_callback(query: types.CallbackQuery):
     uid = query.from_user.id
     lang = get_user_lang(uid)
     data_str = query.data
-    state = user_add_case_state.get(uid)
     data = user_add_case_data.setdefault(uid, {})
-    substate = user_add_case_substate.get(uid)
 
-    # Выбор пола
+    # sex selection
     if data_str in (CB_ADD_SEX_MALE, CB_ADD_SEX_FEMALE):
         if lang == "en":
             male_value = "Male"
@@ -1283,7 +1285,7 @@ async def handle_add_case_callback(query: types.CallbackQuery):
         )
         return
 
-    # Отмена анкеты
+    # cancel form
     if data_str == CB_ADD_CANCEL:
         await query.answer()
         await query.message.edit_text(
@@ -1301,13 +1303,13 @@ async def handle_add_case_callback(query: types.CallbackQuery):
         await repaint_current_step(query, uid)
         return
 
-    # Подтверждение пустого поля
+    # empty field confirm
     if data_str == CB_ADD_EMPTY_YES:
         user_add_case_substate[uid] = None
         field_name = user_add_case_empty_field.get(uid)
         user_add_case_empty_field[uid] = None
 
-        # Двигаемся дальше, либо переходим к подтверждению
+        # move to next step or to confirm
         await go_next_step_or_save(query, uid)
         return
 
@@ -1317,20 +1319,22 @@ async def handle_add_case_callback(query: types.CallbackQuery):
         await repaint_current_step(query, uid)
         return
 
-    # Навигация Назад
+    # back navigation
     if data_str == CB_ADD_BACK:
         await handle_add_case_back(query, uid)
         return
 
-    # Навигация Вперёд
+    # next navigation
     if data_str == CB_ADD_NEXT:
         await handle_add_case_next(query, uid)
         return
 
-    # Сохранение на шаге подтверждения
+    # save on confirm step
     if data_str == CB_ADD_CONFIRM_SAVE:
         await handle_add_case_confirm_save(query, uid)
         return
+
+
 @dp.callback_query_handler(lambda c: c.data and (c.data.startswith("dogs_") or c.data.startswith("case_show_") or c.data.startswith("search_")))
 async def handle_dogs_and_search_callbacks(query: types.CallbackQuery):
     uid = query.from_user.id
@@ -1489,6 +1493,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
