@@ -959,20 +959,24 @@ async def go_next_step_or_save(query: types.CallbackQuery, uid: int):
     state = user_add_case_state.get(uid)
     data = user_add_case_data.setdefault(uid, {})
 
-    # Сохраняем только на последнем шаге
-    if state != ADD_STATE_BIRTH:
-        if state == ADD_STATE_DOG:
-            user_add_case_state[uid] = ADD_STATE_DAM
-        elif state == ADD_STATE_DAM:
-            user_add_case_state[uid] = ADD_STATE_SIRE
-        elif state == ADD_STATE_SIRE:
-            user_add_case_state[uid] = ADD_STATE_SEX
-        elif state == ADD_STATE_SEX:
-            user_add_case_state[uid] = ADD_STATE_BIRTH
-
+    if state == ADD_STATE_DOG:
+        user_add_case_state[uid] = ADD_STATE_DAM
+    elif state == ADD_STATE_DAM:
+        user_add_case_state[uid] = ADD_STATE_SIRE
+    elif state == ADD_STATE_SIRE:
+        user_add_case_state[uid] = ADD_STATE_SEX
+    elif state == ADD_STATE_SEX:
+        user_add_case_state[uid] = ADD_STATE_BIRTH
+    elif state == ADD_STATE_BIRTH:
+        # вместо сохранения переходим на шаг подтверждения
+        user_add_case_state[uid] = ADD_STATE_CONFIRM
+    elif state == ADD_STATE_CONFIRM:
         await query.answer()
-        await repaint_current_step(query, uid)
         return
+
+    await query.answer()
+    await repaint_current_step(query, uid)
+
 
     # Это последний шаг, проверяем минимальные условия
     if not is_case_minimal_ok(data):
@@ -1083,7 +1087,48 @@ async def handle_add_case_callback(query: types.CallbackQuery):
         await handle_add_case_next(query, uid)
         return
 
+    # Confirm save on confirmation step
+    if data_str == CB_ADD_CONFIRM_SAVE:
+        await handle_add_case_confirm_save(query, uid)
+        return
 
+async def handle_add_case_confirm_save(query: types.CallbackQuery, uid: int):
+    lang = get_user_lang(uid)
+    data = user_add_case_data.setdefault(uid, {})
+
+    # Check minimal conditions again
+    if not is_case_minimal_ok(data):
+        await query.answer()
+        await query.message.reply_text(insufficient_data_text(lang))
+        return
+
+    # Save to DB
+    save_case(
+        user_id=uid,
+        dog_name=(data.get("dog_name") or "").strip(),
+        dog_pedigree_url=(data.get("dog_pedigree_url") or "").strip(),
+        dam_name=(data.get("dam_name") or "").strip(),
+        dam_pedigree_url=(data.get("dam_pedigree_url") or "").strip(),
+        sire_name=(data.get("sire_name") or "").strip(),
+        sire_pedigree_url=(data.get("sire_pedigree_url") or "").strip(),
+        sex=(data.get("sex") or "").strip(),
+        birth_date=(data.get("birth_date") or "").strip(),
+    )
+
+    # Clear state
+    user_add_case_state.pop(uid, None)
+    user_add_case_data.pop(uid, None)
+    user_add_case_substate.pop(uid, None)
+    user_add_case_empty_field.pop(uid, None)
+
+    if lang == "en":
+        saved_text = "Form saved. The record has been added to the database."
+    else:
+        saved_text = "Анкета сохранена. Запись добавлена в базу."
+
+    await query.answer()
+    await query.message.reply_text(saved_text)
+    await send_dogs_menu_from_query(query, uid)
 
 
 
@@ -1158,6 +1203,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
