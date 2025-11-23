@@ -477,6 +477,159 @@ async def send_dogs_menu_from_query(query: types.CallbackQuery, uid: int):
         dogs_menu_text(lang),
         reply_markup=dogs_menu_keyboard(lang),
     )
+async def start_dog_search(query: types.CallbackQuery, uid: int):
+    lang = get_user_lang(uid)
+
+    # reset add case state when starting search
+    user_add_case_state.pop(uid, None)
+    user_add_case_data.pop(uid, None)
+    user_add_case_substate.pop(uid, None)
+    user_add_case_empty_field.pop(uid, None)
+
+    user_search_state[uid] = "dog_name"
+    user_search_results.pop(uid, None)
+
+    if lang == "en":
+        text = (
+            "Dog search.\n\n"
+            "Send the dog name or a part of it.\n"
+            "The search is case insensitive. If there are several matches, I will show a list."
+        )
+    else:
+        text = (
+            "Поиск собаки.\n\n"
+            "Отправьте имя собаки или его часть.\n"
+            "Поиск нечувствителен к регистру. Если найдётся несколько вариантов, я покажу список."
+        )
+
+    await query.message.reply_text(text)
+
+
+async def send_search_results_list(message: types.Message, results: list, lang: str):
+    if lang == "en":
+        header = "Several dogs found:\n"
+        dam_label = "dam"
+        sire_label = "sire"
+        back_text = "Back to dog menu"
+    else:
+        header = "Найдено несколько собак:\n"
+        dam_label = "мать"
+        sire_label = "отец"
+        back_text = "Назад в меню собак"
+
+    lines = [header, ""]
+    for idx, row in enumerate(results, start=1):
+        dam_name = row["dam_name"] or ("не указано" if lang == "ru" else "not specified")
+        sire_name = row["sire_name"] or ("не указано" if lang == "ru" else "not specified")
+        line = f"{idx}. {row['dog_name']} ({dam_label}: {dam_name}, {sire_label}: {sire_name})"
+        lines.append(line)
+
+    text = "\n".join(lines)
+
+    kb = types.InlineKeyboardMarkup()
+    for row in results:
+        cb = f"case_show_{row['id']}"
+        kb.add(types.InlineKeyboardButton(row["dog_name"], callback_data=cb))
+
+    kb.add(types.InlineKeyboardButton(back_text, callback_data="dogs_search_back"))
+
+    await message.answer(text, reply_markup=kb)
+
+
+async def show_dog_card(message: types.Message, case_id: int, uid: int, lang: str):
+    with engine.connect() as connection:
+        result = connection.execute(
+            text(
+                """
+                SELECT dog_name, sex, birth_date,
+                       dam_name, sire_name,
+                       dog_pedigree_url, dam_pedigree_url, sire_pedigree_url
+                FROM cases
+                WHERE id = :cid
+                """
+            ),
+            {"cid": case_id},
+        )
+        row = result.fetchone()
+
+    if not row:
+        if lang == "en":
+            await message.answer("Record not found.")
+        else:
+            await message.answer("Запись не найдена.")
+        return
+
+    (
+        dog_name,
+        sex,
+        birth_date,
+        dam_name,
+        sire_name,
+        dog_url,
+        dam_url,
+        sire_url,
+    ) = row
+
+    def v(val, default_ru: str, default_en: str) -> str:
+        if not val or not str(val).strip():
+            return default_ru if lang == "ru" else default_en
+        return str(val).strip()
+
+    dog_name = v(dog_name, "не указано", "not specified")
+    sex = v(sex, "не указан", "not specified")
+    birth_date = v(birth_date, "не указана", "not specified")
+    dam_name = v(dam_name, "не указано", "not specified")
+    sire_name = v(sire_name, "не указано", "not specified")
+    dog_url = v(dog_url, "нет", "none")
+    dam_url = v(dam_url, "нет", "none")
+    sire_url = v(sire_url, "нет", "none")
+
+    if lang == "en":
+        lines = [
+            "Dog card:",
+            "",
+            f"Name: {dog_name}",
+            f"Sex: {sex}",
+            f"Birth date: {birth_date}",
+            "",
+            f"Dam: {dam_name}",
+            f"Sire: {sire_name}",
+            "",
+            "Pedigree links:",
+            f"• Dog: {dog_url}",
+            f"• Dam: {dam_url}",
+            f"• Sire: {sire_url}",
+        ]
+        back_results_text = "Back to results"
+        back_menu_text = "Back to dog menu"
+    else:
+        lines = [
+            "Карточка собаки:",
+            "",
+            f"Имя: {dog_name}",
+            f"Пол: {sex}",
+            f"Дата рождения: {birth_date}",
+            "",
+            f"Мать: {dam_name}",
+            f"Отец: {sire_name}",
+            "",
+            "Ссылки на родословные:",
+            f"• Собака: {dog_url}",
+            f"• Мать: {dam_url}",
+            f"• Отец: {sire_url}",
+        ]
+        back_results_text = "Назад к результатам"
+        back_menu_text = "Назад в меню собак"
+
+    text_out = "\n".join(lines)
+
+    kb = types.InlineKeyboardMarkup()
+    results = user_search_results.get(uid) or []
+    if results and len(results) > 1:
+        kb.add(types.InlineKeyboardButton(back_results_text, callback_data="search_back_to_results"))
+    kb.add(types.InlineKeyboardButton(back_menu_text, callback_data="dogs_search_back"))
+
+    await message.answer(text_out, reply_markup=kb)
 
 
 
@@ -1226,6 +1379,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
