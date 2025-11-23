@@ -86,18 +86,27 @@ CB_ADD_CONFIRM_SAVE = "add_confirm_save"
 def dogs_menu_text(lang: str = "ru") -> str:
     if lang == "en":
         return (
-            "Dog menu.\n"
-            "Later here will be:\n"
-            "• Add dog\n"
-            "• Find dog"
+            "Dog menu.\n\n"
+            "You can add a new dog or search an existing one."
         )
     else:
         return (
-            "Меню работы с собаками.\n"
-            "Позже здесь будут:\n"
-            "• Добавить собаку\n"
-            "• Найти собаку"
+            "Меню работы с собаками.\n\n"
+            "Вы можете добавить новую собаку или найти уже сохранённую."
         )
+
+def dogs_menu_keyboard(lang: str = "ru") -> types.InlineKeyboardMarkup:
+    if lang == "en":
+        add_text = "Add dog"
+        search_text = "Find dog"
+    else:
+        add_text = "Добавить собаку"
+        search_text = "Найти собаку"
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton(add_text, callback_data="dogs_add"))
+    kb.add(types.InlineKeyboardButton(search_text, callback_data="dogs_search"))
+    return kb
 
 
 def add_case_inline_nav(lang: str = "ru") -> types.InlineKeyboardMarkup:
@@ -438,23 +447,37 @@ def insufficient_data_text(lang: str) -> str:
 
 async def send_dogs_menu_from_message(message: types.Message, uid: int):
     lang = get_user_lang(uid)
-    text = dogs_menu_text(lang)
-    await message.answer(text)
+
+    # reset state
     user_add_case_state.pop(uid, None)
     user_add_case_data.pop(uid, None)
     user_add_case_substate.pop(uid, None)
     user_add_case_empty_field.pop(uid, None)
+    user_search_state.pop(uid, None)
+    user_search_results.pop(uid, None)
+
+    await message.answer(
+        dogs_menu_text(lang),
+        reply_markup=dogs_menu_keyboard(lang),
+    )
 
 
 async def send_dogs_menu_from_query(query: types.CallbackQuery, uid: int):
     lang = get_user_lang(uid)
-    text = dogs_menu_text(lang)
-    await query.answer()
-    await query.message.edit_text(text)
+
+    # reset state
     user_add_case_state.pop(uid, None)
     user_add_case_data.pop(uid, None)
     user_add_case_substate.pop(uid, None)
     user_add_case_empty_field.pop(uid, None)
+    user_search_state.pop(uid, None)
+    user_search_results.pop(uid, None)
+
+    await query.message.reply_text(
+        dogs_menu_text(lang),
+        reply_markup=dogs_menu_keyboard(lang),
+    )
+
 
 
 # --- Database helper functions ---
@@ -1203,6 +1226,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
