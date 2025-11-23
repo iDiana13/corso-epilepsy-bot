@@ -931,6 +931,71 @@ async def handle_add_case_start_steps(message: types.Message):
         reply_markup=add_case_inline_nav(lang),
     )
 
+@dp.message_handler(lambda m: user_search_state.get(m.from_user.id) == "dog_name")
+async def handle_search_message(message: types.Message):
+    uid = message.from_user.id
+    lang = get_user_lang(uid)
+
+    q = (message.text or "").strip()
+    if not q:
+        if lang == "en":
+            await message.answer("Please enter a search string.")
+        else:
+            await message.answer("Введите строку для поиска.")
+        return
+
+    with engine.connect() as connection:
+        result = connection.execute(
+            text(
+                """
+                SELECT id, dog_name, dam_name, sire_name, sex, birth_date
+                FROM cases
+                WHERE LOWER(dog_name) LIKE '%' || LOWER(:q) || '%'
+                ORDER BY timestamp DESC
+                LIMIT 20
+                """
+            ),
+            {"q": q},
+        )
+        rows = result.fetchall()
+
+    if not rows:
+        if lang == "en":
+            text_out = "No matches found for this query."
+            repeat_text = "Repeat search"
+            back_text = "Back to dog menu"
+        else:
+            text_out = "По этому запросу ничего не найдено."
+            repeat_text = "Повторить поиск"
+            back_text = "Назад в меню собак"
+
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton(repeat_text, callback_data="dogs_search_repeat"))
+        kb.add(types.InlineKeyboardButton(back_text, callback_data="dogs_search_back"))
+
+        await message.answer(text_out, reply_markup=kb)
+        return
+
+    results = []
+    for r in rows:
+        results.append(
+            {
+                "id": r[0],
+                "dog_name": r[1],
+                "dam_name": r[2],
+                "sire_name": r[3],
+                "sex": r[4],
+                "birth_date": r[5],
+            }
+        )
+
+    user_search_results[uid] = results
+
+    if len(results) == 1:
+        await show_dog_card(message, results[0]["id"], uid, lang)
+        return
+
+    await send_search_results_list(message, results, lang)
 
 
 @dp.message_handler(lambda m: user_add_case_state.get(m.from_user.id) is not None)
@@ -1198,6 +1263,61 @@ async def handle_add_case_callback(query: types.CallbackQuery):
     data = user_add_case_data.setdefault(uid, {})
     substate = user_add_case_substate.get(uid)
 
+    @dp.callback_query_handler(lambda c: c.data and (c.data.startswith("dogs_") or c.data.startswith("case_show_") or c.data.startswith("search_")))
+async def handle_dogs_and_search_callbacks(query: types.CallbackQuery):
+    uid = query.from_user.id
+    lang = get_user_lang(uid)
+    data_str = query.data
+
+    # dogs_add -> показать согласие и запустить анкету
+    if data_str == "dogs_add":
+        await query.answer()
+        await handle_add_case_with_consent(query.message)
+        return
+
+    # dogs_search -> запуск сценария поиска
+    if data_str == "dogs_search":
+        await query.answer()
+        await start_dog_search(query, uid)
+        return
+
+    # Назад в меню собак из поиска
+    if data_str == "dogs_search_back":
+        user_search_state.pop(uid, None)
+        user_search_results.pop(uid, None)
+        await query.answer()
+        await send_dogs_menu_from_query(query, uid)
+        return
+
+    # Повторить поиск
+    if data_str == "dogs_search_repeat":
+        await query.answer()
+        await start_dog_search(query, uid)
+        return
+
+    # Показ конкретной карточки
+    if data_str.startswith("case_show_"):
+        try:
+            case_id = int(data_str.replace("case_show_", ""))
+        except ValueError:
+            await query.answer()
+            return
+
+        await query.answer()
+        await show_dog_card(query.message, case_id, uid, lang)
+        return
+
+    # Назад к списку результатов
+    if data_str == "search_back_to_results":
+        results = user_search_results.get(uid) or []
+        if results:
+            await query.answer()
+            await send_search_results_list(query.message, results, lang)
+        else:
+            await query.answer()
+            await send_dogs_menu_from_query(query, uid)
+        return
+
     # Выбор пола
     if data_str in (CB_ADD_SEX_MALE, CB_ADD_SEX_FEMALE):
         if lang == "en":
@@ -1379,6 +1499,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
