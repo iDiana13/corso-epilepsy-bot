@@ -1253,8 +1253,7 @@ async def go_next_step_or_save(query: types.CallbackQuery, uid: int):
     await query.message.reply_text(saved_text)
     await send_dogs_menu_from_query(query, uid)
 
-    
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith("add_"))
+    @dp.callback_query_handler(lambda c: c.data and c.data.startswith("add_"))
 async def handle_add_case_callback(query: types.CallbackQuery):
     uid = query.from_user.id
     lang = get_user_lang(uid)
@@ -1263,7 +1262,76 @@ async def handle_add_case_callback(query: types.CallbackQuery):
     data = user_add_case_data.setdefault(uid, {})
     substate = user_add_case_substate.get(uid)
 
-    @dp.callback_query_handler(lambda c: c.data and (c.data.startswith("dogs_") or c.data.startswith("case_show_") or c.data.startswith("search_")))
+    # Выбор пола
+    if data_str in (CB_ADD_SEX_MALE, CB_ADD_SEX_FEMALE):
+        if lang == "en":
+            male_value = "Male"
+            female_value = "Female"
+            chosen_text = "Sex: Male." if data_str == CB_ADD_SEX_MALE else "Sex: Female."
+        else:
+            male_value = "Кобель"
+            female_value = "Сука"
+            chosen_text = "Пол: Кобель." if data_str == CB_ADD_SEX_MALE else "Пол: Сука."
+
+        data["sex"] = male_value if data_str == CB_ADD_SEX_MALE else female_value
+        user_add_case_data[uid] = data
+
+        await query.answer()
+        await query.message.edit_text(
+            sex_step_intro(lang) + "\n\n" + chosen_text,
+            reply_markup=add_case_inline_nav_with_sex(lang),
+        )
+        return
+
+    # Отмена анкеты
+    if data_str == CB_ADD_CANCEL:
+        await query.answer()
+        await query.message.edit_text(
+            cancel_confirm_text(lang),
+            reply_markup=cancel_confirm_keyboard(lang),
+        )
+        return
+
+    if data_str == CB_ADD_CANCEL_YES:
+        await send_dogs_menu_from_query(query, uid)
+        return
+
+    if data_str == CB_ADD_CANCEL_NO:
+        await query.answer()
+        await repaint_current_step(query, uid)
+        return
+
+    # Подтверждение пустого поля
+    if data_str == CB_ADD_EMPTY_YES:
+        user_add_case_substate[uid] = None
+        field_name = user_add_case_empty_field.get(uid)
+        user_add_case_empty_field[uid] = None
+
+        # Двигаемся дальше, либо переходим к подтверждению
+        await go_next_step_or_save(query, uid)
+        return
+
+    if data_str == CB_ADD_EMPTY_NO:
+        user_add_case_substate[uid] = None
+        user_add_case_empty_field[uid] = None
+        await repaint_current_step(query, uid)
+        return
+
+    # Навигация Назад
+    if data_str == CB_ADD_BACK:
+        await handle_add_case_back(query, uid)
+        return
+
+    # Навигация Вперёд
+    if data_str == CB_ADD_NEXT:
+        await handle_add_case_next(query, uid)
+        return
+
+    # Сохранение на шаге подтверждения
+    if data_str == CB_ADD_CONFIRM_SAVE:
+        await handle_add_case_confirm_save(query, uid)
+        return
+@dp.callback_query_handler(lambda c: c.data and (c.data.startswith("dogs_") or c.data.startswith("case_show_") or c.data.startswith("search_")))
 async def handle_dogs_and_search_callbacks(query: types.CallbackQuery):
     uid = query.from_user.id
     lang = get_user_lang(uid)
@@ -1318,85 +1386,7 @@ async def handle_dogs_and_search_callbacks(query: types.CallbackQuery):
             await send_dogs_menu_from_query(query, uid)
         return
 
-    # Выбор пола
-    if data_str in (CB_ADD_SEX_MALE, CB_ADD_SEX_FEMALE):
-        if lang == "en":
-            male_value = "Male"
-            female_value = "Female"
-            chosen_text = "Sex: Male." if data_str == CB_ADD_SEX_MALE else "Sex: Female."
-        else:
-            male_value = "Кобель"
-            female_value = "Сука"
-            chosen_text = "Пол: Кобель." if data_str == CB_ADD_SEX_MALE else "Пол: Сука."
 
-        data["sex"] = male_value if data_str == CB_ADD_SEX_MALE else female_value
-        user_add_case_data[uid] = data
-
-        await query.answer()
-        await query.message.edit_text(
-            sex_step_intro(lang) + "\n\n" + chosen_text,
-            reply_markup=add_case_inline_nav_with_sex(lang),
-        )
-        return
-
-    # Отмена анкеты
-    if data_str == CB_ADD_CANCEL:
-        await query.answer()
-        await query.message.edit_text(
-            cancel_confirm_text(lang),
-            reply_markup=cancel_confirm_keyboard(lang),
-        )
-        return
-
-    if data_str == CB_ADD_CANCEL_YES:
-        await send_dogs_menu_from_query(query, uid)
-        return
-
-    if data_str == CB_ADD_CANCEL_NO:
-        await query.answer()
-        await repaint_current_step(query, uid)
-        return
-
-    # Подтверждение пустого поля
-    if data_str == CB_ADD_EMPTY_YES:
-        user_add_case_substate[uid] = None
-        field_name = user_add_case_empty_field.get(uid)
-        user_add_case_empty_field[uid] = None
-
-        # Двигаемся дальше, либо сохраняем
-        await go_next_step_or_save(query, uid)
-        return
-
-    if data_str == CB_ADD_EMPTY_NO:
-        user_add_case_substate[uid] = None
-        user_add_case_empty_field[uid] = None
-        await repaint_current_step(query, uid)
-        return
-
-    # Навигация Назад
-    if data_str == CB_ADD_BACK:
-        await handle_add_case_back(query, uid)
-        return
-
-    # Навигация Вперёд
-    if data_str == CB_ADD_NEXT:
-        await handle_add_case_next(query, uid)
-        return
-
-    # Confirm save on confirmation step
-    if data_str == CB_ADD_CONFIRM_SAVE:
-        await handle_add_case_confirm_save(query, uid)
-        return
-
-async def handle_add_case_confirm_save(query: types.CallbackQuery, uid: int):
-    lang = get_user_lang(uid)
-    data = user_add_case_data.setdefault(uid, {})
-
-    # Check minimal conditions again
-    if not is_case_minimal_ok(data):
-        await query.answer()
-        await query.message.reply_text(insufficient_data_text(lang))
-        return
 
     # Save to DB
     save_case(
@@ -1499,6 +1489,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
