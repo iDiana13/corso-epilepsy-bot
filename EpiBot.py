@@ -897,14 +897,12 @@ async def handle_back_to_bot_menu(message: types.Message):
 
 
 @dp.message_handler(lambda m: m.text in ["Продолжаю", "I continue"])
+@dp.message_handler(lambda m: m.text in ["Продолжаю", "I continue"])
 async def handle_add_case_start_steps(message: types.Message):
     uid = message.from_user.id
     lang = get_user_lang(uid)
 
-    # do not restart form if it is already in progress
-    if user_add_case_state.get(uid) is not None:
-        return
-
+    # всегда начинаем анкету заново
     user_add_case_state[uid] = ADD_STATE_DOG
     user_add_case_substate[uid] = None
     user_add_case_empty_field[uid] = None
@@ -919,17 +917,18 @@ async def handle_add_case_start_steps(message: types.Message):
         "birth_date": "",
     }
 
-    # set reply keyboard to single "Back to bot menu" button
+    # меняем клавиатуру на «Назад в меню бота»
     await message.answer(
         " ",
         reply_markup=add_case_back_only_keyboard(lang),
     )
 
-    # send first step with inline navigation
+    # отправляем первый шаг с inline навигацией
     await message.answer(
         dog_step_intro(lang),
         reply_markup=add_case_inline_nav(lang),
     )
+
 
 @dp.message_handler(lambda m: user_search_state.get(m.from_user.id) == "dog_name")
 async def handle_search_message(message: types.Message):
@@ -1493,6 +1492,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
