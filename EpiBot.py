@@ -1253,7 +1253,7 @@ async def go_next_step_or_save(query: types.CallbackQuery, uid: int):
     await query.message.reply_text(saved_text)
     await send_dogs_menu_from_query(query, uid)
 
-    @dp.callback_query_handler(lambda c: c.data and c.data.startswith("add_"))
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith("add_"))
 async def handle_add_case_callback(query: types.CallbackQuery):
     uid = query.from_user.id
     lang = get_user_lang(uid)
@@ -1489,6 +1489,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
